@@ -18,7 +18,6 @@
  */
 package org.apache.pulsar.broker.admin;
 
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -48,6 +47,13 @@ import javax.ws.rs.core.UriInfo;
 
 import org.apache.bookkeeper.mledger.proto.PendingBookieOpsStats;
 import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.pulsar.broker.admin.BrokerStats;
+import org.apache.pulsar.broker.admin.Brokers;
+import org.apache.pulsar.broker.admin.Clusters;
+import org.apache.pulsar.broker.admin.Namespaces;
+import org.apache.pulsar.broker.admin.PersistentTopics;
+import org.apache.pulsar.broker.admin.Properties;
+import org.apache.pulsar.broker.admin.ResourceQuotas;
 import org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest;
 import org.apache.pulsar.broker.cache.ConfigurationCacheService;
 import org.apache.pulsar.broker.loadbalance.ResourceUnit;
@@ -65,7 +71,7 @@ import org.apache.pulsar.common.policies.data.ResourceQuota;
 import org.apache.pulsar.common.stats.AllocatorStats;
 import org.apache.pulsar.common.stats.Metrics;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
-import org.apache.pulsar.policies.data.loadbalancer.LocalBrokerData;
+import org.apache.pulsar.policies.data.loadbalancer.LoadReport;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.ZooDefs;
@@ -91,11 +97,10 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
 
     private Field uriField;
     private UriInfo uriInfo;
-    private final String configClusterName = "use";
 
     public AdminTest() {
         super();
-        conf.setClusterName(configClusterName);
+        conf.setClusterName("use");
     }
 
     @Override
@@ -160,7 +165,6 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         doReturn(Sets.newTreeSet(Lists.newArrayList("use", "usw", "usc"))).when(persistentTopics).clusters();
         doNothing().when(persistentTopics).validateAdminAccessOnProperty("my-property");
         doNothing().when(persistentTopics).validateAdminAccessOnProperty("other-property");
-        doNothing().when(persistentTopics).validateAdminAccessOnProperty("prop-xyz");
 
         resourceQuotas = spy(new ResourceQuotas());
         resourceQuotas.setServletContext(new MockServletContext());
@@ -187,10 +191,10 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
 
     @Test
     void clusters() throws Exception {
-        assertEquals(clusters.getClusters(), Lists.newArrayList(configClusterName));
+        assertEquals(clusters.getClusters(), new ArrayList<String>());
         verify(clusters, never()).validateSuperUserAccess();
 
-        clusters.updateCluster("use", new ClusterData("http://broker.messaging.use.example.com"));
+        clusters.createCluster("use", new ClusterData("http://broker.messaging.use.example.com"));
         verify(clusters, times(1)).validateSuperUserAccess();
         // ensure to read from ZooKeeper directly
         clusters.clustersListCache().clear();
@@ -448,7 +452,7 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         assertEquals(properties.getProperties(), Lists.newArrayList());
 
         // Create a namespace to test deleting a non-empty property
-        clusters.updateCluster("use", new ClusterData());
+        clusters.createCluster("use", new ClusterData());
         newPropertyAdmin = new PropertyAdmin(Lists.newArrayList("role1", "other-role"), Sets.newHashSet("use"));
         properties.createProperty("my-property", newPropertyAdmin);
 
@@ -475,7 +479,7 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
 
     @Test
     void brokers() throws Exception {
-        clusters.updateCluster("use", new ClusterData("http://broker.messaging.use.example.com",
+        clusters.createCluster("use", new ClusterData("http://broker.messaging.use.example.com",
                 "https://broker.messaging.use.example.com:4443"));
 
         URI requestUri = new URI(
@@ -531,7 +535,7 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         // create policies
         PropertyAdmin admin = new PropertyAdmin();
         admin.getAllowedClusters().add(cluster);
-        mockZookKeeper.create(PulsarWebResource.path(POLICIES, property),
+        mockZookKeeper.create(PulsarWebResource.path("policies", property),
                 ObjectMapperFactory.getThreadLocal().writeValueAsBytes(admin), Ids.OPEN_ACL_UNSAFE,
                 CreateMode.PERSISTENT);
 
@@ -558,9 +562,9 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         doReturn("client-id").when(brokerStats).clientAppId();
         Collection<Metrics> metrics = brokerStats.getMetrics();
         assertNotNull(metrics);
-        LocalBrokerData loadReport = (LocalBrokerData) brokerStats.getLoadReport();
+        LoadReport loadReport = brokerStats.getLoadReport();
         assertNotNull(loadReport);
-        assertNotNull(loadReport.getCpu());
+        assertEquals(loadReport.isOverLoaded(), false);
         Collection<Metrics> mBeans = brokerStats.getMBeans();
         assertTrue(!mBeans.isEmpty());
         AllocatorStats allocatorStats = brokerStats.getAllocatorStats("default");
@@ -569,13 +573,9 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         assertTrue(bookieOpsStats.isEmpty());
         StreamingOutput destination = brokerStats.getDestinations2();
         assertNotNull(destination);
-        try {
-            Map<Long, Collection<ResourceUnit>> resource = brokerStats.getBrokerResourceAvailability("prop", "use",
-                    "ns2");
-            fail("should have failed as ModularLoadManager doesn't support it");
-        } catch (RestException re) {
-            // Ok
-        }
+        Map<Long, Collection<ResourceUnit>> resource = brokerStats.getBrokerResourceAvailability("prop", "use", "ns2");
+        // size should be 1 with default resourceUnit
+        assertTrue(resource.size() == 1);
     }
 
     @Test
@@ -592,7 +592,7 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         PropertyAdmin admin = new PropertyAdmin();
         admin.getAllowedClusters().add(cluster);
         ZkUtils.createFullPathOptimistic(mockZookKeeper,
-                PulsarWebResource.path(POLICIES, property, cluster, namespace),
+                PulsarWebResource.path("policies", property, cluster, namespace),
                 ObjectMapperFactory.getThreadLocal().writeValueAsBytes(new Policies()), ZooDefs.Ids.OPEN_ACL_UNSAFE,
                 CreateMode.PERSISTENT);
 
@@ -628,12 +628,4 @@ public class AdminTest extends MockedPulsarServiceBaseTest {
         assertTrue(permission.isEmpty());
     }
 
-    @Test
-    public void testRestExceptionMessage() {
-        String message = "my-message";
-        RestException exception = new RestException(Status.PRECONDITION_FAILED, message);
-        assertEquals(exception.getMessage(), message);
-
-    }
-    
 }

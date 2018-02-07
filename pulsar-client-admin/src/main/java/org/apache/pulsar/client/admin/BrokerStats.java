@@ -19,7 +19,6 @@
 package org.apache.pulsar.client.admin;
 
 import org.apache.pulsar.common.stats.AllocatorStats;
-import org.apache.pulsar.policies.data.loadbalancer.LoadManagerReport;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -61,6 +60,4 @@ public interface BrokerStats {
     JsonObject getPendingBookieOpsStats() throws PulsarAdminException;
 
     AllocatorStats getAllocatorStats(String allocatorName) throws PulsarAdminException;
-    
-    LoadManagerReport getLoadReport() throws PulsarAdminException;
 }

@@ -32,172 +32,172 @@ public class NamespaceNameTest {
     @Test
     void namespace() {
         try {
-            NamespaceName.get("namespace");
+            new NamespaceName("namespace");
             fail("Should have caused exception");
         } catch (IllegalArgumentException e) {
             // expected
         }
 
         try {
-            NamespaceName.get("property.namespace");
+            new NamespaceName("property.namespace");
             fail("Should have caused exception");
         } catch (IllegalArgumentException e) {
             // expected
         }
 
         try {
-            NamespaceName.get("0.0.0.0");
+            new NamespaceName("0.0.0.0");
             fail("Should have caused exception");
         } catch (IllegalArgumentException e) {
             // expected
         }
 
         try {
-            NamespaceName.get("property.namespace:destination");
+            new NamespaceName("property.namespace:destination");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("property/namespace");
+            new NamespaceName("property/namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("property/cluster/namespace/destination");
+            new NamespaceName("property/cluster/namespace/destination");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get(null);
+            new NamespaceName(null);
         } catch (IllegalArgumentException e) {
             // OK
         }
 
         try {
-            NamespaceName.get(null, "use", "ns1");
+            new NamespaceName(null, "use", "ns1");
         } catch (IllegalArgumentException e) {
             // OK
         }
 
-        assertEquals(NamespaceName.get("prop/cluster/ns").getPersistentTopicName("ds"),
+        assertEquals(new NamespaceName("prop/cluster/ns").getPersistentTopicName("ds"),
                 "persistent://prop/cluster/ns/ds");
 
         try {
-            NamespaceName.get("prop/cluster/ns").getDestinationName(null, "ds");
+            new NamespaceName("prop/cluster/ns").getDestinationName(null, "ds");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
-        assertEquals(NamespaceName.get("prop/cluster/ns").getDestinationName(DestinationDomain.persistent, "ds"),
+        assertEquals(new NamespaceName("prop/cluster/ns").getDestinationName(DestinationDomain.persistent, "ds"),
                 "persistent://prop/cluster/ns/ds");
-        assertEquals(NamespaceName.get("prop/cluster/ns"), NamespaceName.get("prop/cluster/ns"));
-        assertEquals(NamespaceName.get("prop/cluster/ns").toString(), "prop/cluster/ns");
-        assertFalse(NamespaceName.get("prop/cluster/ns").equals("prop/cluster/ns"));
+        assertEquals(new NamespaceName("prop/cluster/ns"), new NamespaceName("prop/cluster/ns"));
+        assertEquals(new NamespaceName("prop/cluster/ns").toString(), "prop/cluster/ns");
+        assertFalse(new NamespaceName("prop/cluster/ns").equals("prop/cluster/ns"));
 
-        assertEquals(NamespaceName.get("prop", "cluster", "ns"), NamespaceName.get("prop/cluster/ns"));
-        assertEquals(NamespaceName.get("prop/cluster/ns").getProperty(), "prop");
-        assertEquals(NamespaceName.get("prop/cluster/ns").getCluster(), "cluster");
-        assertEquals(NamespaceName.get("prop/cluster/ns").getLocalName(), "ns");
+        assertEquals(new NamespaceName("prop", "cluster", "ns"), new NamespaceName("prop/cluster/ns"));
+        assertEquals(new NamespaceName("prop/cluster/ns").getProperty(), "prop");
+        assertEquals(new NamespaceName("prop/cluster/ns").getCluster(), "cluster");
+        assertEquals(new NamespaceName("prop/cluster/ns").getLocalName(), "ns");
 
         try {
-            NamespaceName.get("ns").getProperty();
+            new NamespaceName("ns").getProperty();
             fail("old style namespace");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("ns").getCluster();
+            new NamespaceName("ns").getCluster();
             fail("old style namespace");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("ns").getLocalName();
+            new NamespaceName("ns").getLocalName();
             fail("old style namespace");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("_pulsar/cluster/namespace");
+            new NamespaceName("_pulsar/cluster/namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get(null, "cluster", "namespace");
+            new NamespaceName(null, "cluster", "namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("", "cluster", "namespace");
+            new NamespaceName("", "cluster", "namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("/cluster/namespace");
+            new NamespaceName("/cluster/namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar//namespace");
+            new NamespaceName("pulsar//namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar", null, "namespace");
+            new NamespaceName("pulsar", null, "namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar", "", "namespace");
+            new NamespaceName("pulsar", "", "namespace");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar/cluster/");
+            new NamespaceName("pulsar/cluster/");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar", "cluster", null);
+            new NamespaceName("pulsar", "cluster", null);
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
         try {
-            NamespaceName.get("pulsar", "cluster", "");
+            new NamespaceName("pulsar", "cluster", "");
             fail("Should have raised exception");
         } catch (IllegalArgumentException e) {
             // Ok
         }
 
-        NamespaceName v2Namespace = NamespaceName.get("pulsar/colo1/testns-1");
+        NamespaceName v2Namespace = new NamespaceName("pulsar/colo1/testns-1");
         assertEquals(v2Namespace.getProperty(), "pulsar");
         assertEquals(v2Namespace.getCluster(), "colo1");
         assertEquals(v2Namespace.getLocalName(), "testns-1");

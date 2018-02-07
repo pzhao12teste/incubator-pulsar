@@ -40,7 +40,7 @@ abstract class CliCommand {
 
     String validateNamespace(List<String> params) {
         String namespace = checkArgument(params);
-        return NamespaceName.get(namespace).toString();
+        return new NamespaceName(namespace).toString();
     }
 
     String validateDestination(List<String> params) {
@@ -53,15 +53,6 @@ abstract class CliCommand {
         DestinationName ds = DestinationName.get(destination);
         if (ds.getDomain() != DestinationDomain.persistent) {
             throw new ParameterException("Need to provide a persistent topic name");
-        }
-        return ds.toString();
-    }
-    
-    String validateNonPersistentTopic(List<String> params) {
-        String destination = checkArgument(params);
-        DestinationName ds = DestinationName.get(destination);
-        if (ds.getDomain() != DestinationDomain.non_persistent) {
-            throw new ParameterException("Need to provide a non-persistent topic name");
         }
         return ds.toString();
     }

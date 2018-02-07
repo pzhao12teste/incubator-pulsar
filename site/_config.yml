@@ -25,10 +25,9 @@ pulsar_repo: https://github.com/apache/incubator-pulsar/tree/master
 baseurl: /
 destination: ../generated-site/content
 
-current_version: 1.21.0-incubating
-archived_releases:
-  - 1.20.0-incubating
-  - 1.19.0-incubating
+versions:
+- 1.18
+latest: 1.18
 
 markdown: kramdown
 kramdown:
@@ -62,4 +61,3 @@ exclude:
 - package-lock.json
 - Rakefile
 - VERSIONS
-- README.md

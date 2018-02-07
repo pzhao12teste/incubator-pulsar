@@ -22,7 +22,6 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
-import com.google.common.collect.Lists;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.jute.Record;
 import org.apache.zookeeper.proto.ConnectRequest;
@@ -47,6 +46,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jersey.repackaged.com.google.common.collect.Lists;
 
 @Aspect
 public class ClientCnxnAspect {

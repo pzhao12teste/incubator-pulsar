@@ -2,27 +2,6 @@
 title: ZooKeeper and BookKeeper administration
 ---
 
-<!--
-
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-
--->
-
 Pulsar relies on two external systems for essential tasks:
 
 * [ZooKeeper](https://zookeeper.apache.org/) is responsible for a wide variety of configuration- and coordination-related tasks.
@@ -59,7 +38,7 @@ Configuration for global ZooKeeper is handled by the [`conf/global-zookeeper.con
 {% popover BookKeeper %} is responsible for all durable message storage in Pulsar. BookKeeper is a distributed [write-ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) WAL system that guarantees read consistency of independent message logs called {% popover ledgers %}. Individual BookKeeper servers are also called *bookies*.
 
 {% include admonition.html type="info" content="
-For a guide to managing message persistence, retention, and expiry in Pulsar, see [this guide](../../advanced/RetentionExpiry).
+For a guide to managing message persistence, retention, and expiry in Pulsar, see [this guide](../../concerns/RetentionExpiry).
 " %}
 
 ### Deploying BookKeeper
@@ -92,7 +71,7 @@ ledgerManagerType=hierarchical
 
 In Pulsar, you can set *persistence policies*, at the {% popover namespace %} level, that determine how {% popover BookKeeper %} handles persistent storage of messages. Policies determine four things:
 
-* The number of {% popover acks %} (guaranteed copies) to wait for each ledger entry
+* The number of {% popover acks %} (guaranteed copies) to wait for for each ledger entry
 * The number of {% popover bookies %} to use for a topic
 * How many writes to make for each ledger entry
 * The throttling rate for mark-delete operations
@@ -174,6 +153,6 @@ PersistencePolicies policies = admin.namespaces().getPersistence(namespace);
 
 This diagram illustrates the role of ZooKeeper and BookKeeper in a Pulsar cluster:
 
-![ZooKeeper and BookKeeper](/img/pulsar_system_architecture.png)
+![ZooKeeper and BookKeeper]({{ site.baseurl }}img/pulsar_system_architecture.png)
 
 Each Pulsar {% popover cluster %} consists of one or more message {% popover brokers %}. Each broker relies on an ensemble of {% popover bookies %} 

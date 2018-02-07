@@ -26,7 +26,6 @@ import static org.mockito.Mockito.spy;
 import static org.testng.Assert.assertEquals;
 
 import java.lang.reflect.Method;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -120,7 +119,7 @@ public class PersistentTopicConcurrentTest extends MockedBookKeeperTestCase {
                 .setSubType(PulsarApi.CommandSubscribe.SubType.Exclusive).build();
 
         Future<Consumer> f1 = topic.subscribe(serverCnx, cmd.getSubscription(), cmd.getConsumerId(), cmd.getSubType(),
-                0, cmd.getConsumerName(), cmd.getDurable(), null, Collections.emptyMap(), cmd.getReadCompacted());
+                0, cmd.getConsumerName(), cmd.getDurable(), null);
         f1.get();
 
         final CyclicBarrier barrier = new CyclicBarrier(2);
@@ -178,7 +177,7 @@ public class PersistentTopicConcurrentTest extends MockedBookKeeperTestCase {
                 .setSubType(PulsarApi.CommandSubscribe.SubType.Exclusive).build();
 
         Future<Consumer> f1 = topic.subscribe(serverCnx, cmd.getSubscription(), cmd.getConsumerId(), cmd.getSubType(),
-                0, cmd.getConsumerName(), cmd.getDurable(), null, Collections.emptyMap(), cmd.getReadCompacted());
+                0, cmd.getConsumerName(), cmd.getDurable(), null);
         f1.get();
 
         final CyclicBarrier barrier = new CyclicBarrier(2);
@@ -240,7 +239,7 @@ public class PersistentTopicConcurrentTest extends MockedBookKeeperTestCase {
                 .setSubType(PulsarApi.CommandSubscribe.SubType.Exclusive).build();
 
         Future<Consumer> f1 = topic.subscribe(serverCnx, cmd.getSubscription(), cmd.getConsumerId(), cmd.getSubType(),
-                0, cmd.getConsumerName(), cmd.getDurable(), null, Collections.emptyMap(), cmd.getReadCompacted());
+                0, cmd.getConsumerName(), cmd.getDurable(), null);
         f1.get();
 
         final CyclicBarrier barrier = new CyclicBarrier(2);
@@ -298,7 +297,7 @@ public class PersistentTopicConcurrentTest extends MockedBookKeeperTestCase {
                 .setSubType(PulsarApi.CommandSubscribe.SubType.Exclusive).build();
 
         Future<Consumer> f1 = topic.subscribe(serverCnx, cmd.getSubscription(), cmd.getConsumerId(), cmd.getSubType(),
-                0, cmd.getConsumerName(), cmd.getDurable(), null, Collections.emptyMap(), cmd.getReadCompacted());
+                0, cmd.getConsumerName(), cmd.getDurable(), null);
         f1.get();
 
         final CyclicBarrier barrier = new CyclicBarrier(2);

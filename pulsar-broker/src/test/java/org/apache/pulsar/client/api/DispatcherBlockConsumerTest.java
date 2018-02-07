@@ -29,15 +29,12 @@ import static org.testng.Assert.fail;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -45,10 +42,18 @@ import org.apache.pulsar.broker.namespace.NamespaceService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.persistent.PersistentDispatcherMultipleConsumers;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.client.api.Consumer;
+import org.apache.pulsar.client.api.ConsumerConfiguration;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.ProducerConfiguration;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.ConsumerImpl;
 import org.apache.pulsar.client.impl.MessageIdImpl;
+import org.apache.pulsar.common.policies.data.PersistentSubscriptionStats;
 import org.apache.pulsar.common.policies.data.PersistentTopicStats;
-import org.apache.pulsar.common.policies.data.SubscriptionStats;
 import org.apache.pulsar.common.util.collections.ConcurrentOpenHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,13 +61,12 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import org.testng.collections.Lists;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
-import com.google.common.collect.Queues;
-import com.google.common.collect.Sets;
+
+import jersey.repackaged.com.google.common.collect.Sets;
 
 public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
     private static final Logger log = LoggerFactory.getLogger(DispatcherBlockConsumerTest.class);
@@ -91,7 +95,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
      *
      * @throws Exception
      */
-    @Test(timeOut=10000)
+    @Test
     public void testConsumerBlockingWithUnAckedMessagesAtDispatcher() throws Exception {
         log.info("-- Starting {} test --", methodName);
 
@@ -133,6 +137,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                     msg = consumers[i].receive(500, TimeUnit.MILLISECONDS);
                     if (msg != null) {
                         messages.put(msg, consumers[i]);
+                        log.info("Received message: " + new String(msg.getData()));
                     } else {
                         break;
                     }
@@ -151,33 +156,33 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                     fail("ack failed", e);
                 }
             });
-
+            // wait to start dispatching-async
+            Thread.sleep(1000);
+            // try to consume remaining messages
+            int remainingMessages = totalProducedMsgs - messages.size();
             // try to consume remaining messages: broker may take time to deliver so, retry multiple time to consume
             // all messages
-            Queue<MessageId> result = Queues.newConcurrentLinkedQueue();
-            // expecting messages which are not received
-            int expectedRemainingMessages = totalProducedMsgs - messages.size();
-            CountDownLatch latch = new CountDownLatch(expectedRemainingMessages);
-            for (int i = 0; i < consumers.length; i++) {
-                final int consumerCount = i;
-                for (int j = 0; j < totalProducedMsgs; j++) {
-                    consumers[i].receiveAsync().thenAccept(m -> {
-                        result.add(m.getMessageId());
-                        try {
-                            consumers[consumerCount].acknowledge(m);
-                        } catch (PulsarClientException e) {
-                            fail("failed to ack msg", e);
+            for (int retry = 0; retry < 5; retry++) {
+                for (int i = 0; i < consumers.length; i++) {
+                    for (int j = 0; j < remainingMessages; j++) {
+                        msg = consumers[i].receive(100, TimeUnit.MILLISECONDS);
+                        if (msg != null) {
+                            messages.put(msg, consumers[i]);
+                            log.info("Received message: " + new String(msg.getData()));
+                        } else {
+                            break;
                         }
-                        latch.countDown();
-                    });
+                    }
+                }
+                if (messages.size() >= totalProducedMsgs) {
+                    break;
+                } else {
+                    Thread.sleep(100);
                 }
             }
 
-            latch.await();
-
-            // total received-messages should match to produced messages (it may have duplicate messages)
-            assertTrue(result.size() >= expectedRemainingMessages);
-
+            // total received-messages should match to produced messages
+            assertEquals(totalProducedMsgs, messages.size());
             producer.close();
             Arrays.asList(consumers).forEach(c -> {
                 try {
@@ -200,7 +205,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
      *
      * @throws Exception
      */
-    @Test(timeOut=10000)
+    @Test
     public void testConsumerBlockingWithUnAckedMessagesAndRedelivery() throws Exception {
         log.info("-- Starting {} test --", methodName);
 
@@ -247,38 +252,75 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                 }
             }
 
+            int totalConsumedMsgs = messages.size();
             // client must receive number of messages = unAckedMessagesBufferSize rather all produced messages
             assertNotEquals(messages.size(), totalProducedMsgs);
 
-            // (3) trigger redelivery
+            // trigger redelivery
             messages.asMap().forEach((c, msgs) -> {
                 c.redeliverUnacknowledgedMessages(
                         msgs.stream().map(m -> (MessageIdImpl) m).collect(Collectors.toSet()));
             });
 
-            // (4) try to consume remaining messages: broker may take time to deliver so, retry multiple time to consume
-            // all messages
-            Queue<MessageId> result = Queues.newConcurrentLinkedQueue();
-            CountDownLatch latch = new CountDownLatch(totalProducedMsgs);
-            for (int i = 0; i < consumers.length; i++) {
-                final int consumerCount = i;
+            // wait for redelivery to be completed
+            Thread.sleep(1000);
+
+            // now, broker must have redelivered all unacked messages
+            messages.clear();
+            for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < totalProducedMsgs; j++) {
-                    consumers[i].receiveAsync().thenAccept(m -> {
-                        result.add(m.getMessageId());
-                        try {
-                            consumers[consumerCount].acknowledge(m);
-                        } catch (PulsarClientException e) {
-                            fail("failed to ack msg", e);
-                        }
-                        latch.countDown();
-                    });
+                    msg = consumers[i].receive(500, TimeUnit.MILLISECONDS);
+                    if (msg != null) {
+                        messages.put(consumers[i], msg.getMessageId());
+                        log.info("Received message: " + new String(msg.getData()));
+                    } else {
+                        break;
+                    }
                 }
             }
 
-            latch.await();
+            // check all unacked messages have been redelivered: with delta 30: 3 consumers with receiverQueueSize=10
+            Set<MessageId> result = Sets.newHashSet(messages.values());
+            assertEquals(totalConsumedMsgs, result.size(), 3 * receiverQueueSize);
 
-            // total received-messages should match to produced messages (it may have duplicate messages)
-            assertTrue(result.size() >= totalProducedMsgs);
+            // start acknowledging messages
+            messages.asMap().forEach((c, msgs) -> {
+                msgs.forEach(m -> {
+                    try {
+                        c.acknowledge(m);
+                    } catch (PulsarClientException e) {
+                        fail("ack failed", e);
+                    }
+                });
+            });
+
+            // now: dispatcher must be unblocked: wait to start dispatching-async
+            Thread.sleep(1000);
+            result = Sets.newHashSet(messages.values());
+            // try to consume remaining messages: broker may take time to deliver so, retry multiple time to consume
+            // all messages
+            for (int retry = 0; retry < 5; retry++) {
+                for (int i = 0; i < consumers.length; i++) {
+                    for (int j = 0; j < totalProducedMsgs; j++) {
+                        msg = consumers[i].receive(100, TimeUnit.MILLISECONDS);
+                        if (msg != null) {
+                            result.add(msg.getMessageId());
+                            consumers[i].acknowledge(msg);
+                            log.info("Received message: " + new String(msg.getData()));
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if (result.size() >= totalProducedMsgs) {
+                    break;
+                } else {
+                    Thread.sleep(100);
+                }
+            }
+
+            // total received-messages should match to produced messages
+            assertEquals(totalProducedMsgs, result.size());
             producer.close();
             Arrays.asList(consumers).forEach(c -> {
                 try {
@@ -347,10 +389,10 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
             // client must receive number of messages = unAckedMessagesBufferSize rather all produced messages
             assertEquals(messages.size(), unackMsgAllowed, receiverQueueSize * 2);
 
-            // close consumer1: all messages of consumer1 must be replayed and received by consumer2
-            consumer1.close();
             // create consumer2
             Consumer consumer2 = pulsarClient.subscribe(topicName, subscriberName, conf);
+            // close consumer1: all messages of consumer1 must be replayed and received by consumer2
+            consumer1.close();
             Map<Message, Consumer> messages2 = Maps.newHashMap();
             // try to consume remaining messages: broker may take time to deliver so, retry multiple time to consume
             // all messages
@@ -389,7 +431,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
      *
      * @throws Exception
      */
-    @Test(timeOut=10000)
+    @Test
     public void testRedeliveryOnBlockedDistpatcher() throws Exception {
         log.info("-- Starting {} test --", methodName);
 
@@ -440,7 +482,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
 
             int totalConsumedMsgs = messages.size();
             // client must receive number of messages = unAckedMessagesBufferSize rather all produced messages
-            assertEquals(totalConsumedMsgs, unackMsgAllowed, 3 * receiverQueueSize);
+            assertEquals(totalConsumedMsgs, unackMsgAllowed, 2 * receiverQueueSize);
 
             // trigger redelivery
             Arrays.asList(consumers).forEach(c -> {
@@ -483,31 +525,36 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                 });
             });
 
+            // now: dispatcher must be unblocked: wait to start dispatching-async
+            Thread.sleep(1000);
+            result.clear();
             messages1.values().forEach(s -> result.addAll(s));
             // try to consume remaining messages
-            int remainingMessages = totalProducedMsgs - result.size();
+            int remainingMessages = totalProducedMsgs - messages1.size();
             // try to consume remaining messages: broker may take time to deliver so, retry multiple time to consume
             // all messages
-            CountDownLatch latch = new CountDownLatch(remainingMessages);
-            Queue<MessageId> consumedMessages = Queues.newConcurrentLinkedQueue();
-            for (int i = 0; i < consumers.length; i++) {
-                final int counsumerIndex = i;
-                for (int j = 0; j < remainingMessages; j++) {
-                    consumers[i].receiveAsync().thenAccept(m -> {
-                        consumedMessages.add(m.getMessageId());
-                        try {
-                            consumers[counsumerIndex].acknowledge(m);
-                        } catch (PulsarClientException e) {
-                            fail("failed to ack", e);
+            for (int retry = 0; retry < 5; retry++) {
+                for (int i = 0; i < consumers.length; i++) {
+                    for (int j = 0; j < remainingMessages; j++) {
+                        msg = consumers[i].receive(100, TimeUnit.MILLISECONDS);
+                        if (msg != null) {
+                            result.add(msg.getMessageId());
+                            consumers[i].acknowledge(msg);
+                            log.info("Received message: " + new String(msg.getData()));
+                        } else {
+                            break;
                         }
-                        latch.countDown();
-                    });
+                    }
+                }
+                if (result.size() >= totalProducedMsgs) {
+                    break;
+                } else {
+                    Thread.sleep(100);
                 }
             }
 
-            latch.await();
-            // total received-messages should match remaining messages excluding duplicate
-            assertTrue(consumedMessages.size() >= remainingMessages);
+            // total received-messages should match to produced messages
+            assertEquals(totalProducedMsgs, result.size());
             producer.close();
             Arrays.asList(consumers).forEach(c -> {
                 try {
@@ -533,7 +580,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
             final int timeWaitToSync = 100;
 
             PersistentTopicStats stats;
-            SubscriptionStats subStats;
+            PersistentSubscriptionStats subStats;
 
             // configure maxUnackMessagePerDispatcher then restart broker to get this change
             conf.setMaxUnackedMessagesPerSubscription(10);
@@ -626,7 +673,7 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
         Set<Integer> unackMessages = Sets.newHashSet(5, 10, 20, 21, 22, 23, 25, 26, 30, 32, 40, 80, 160, 320);
         int receivedMsgCount = 0;
         for (int i = 0; i < totalProducedMsgs; i++) {
-            Message msg = consumer.receive(500, TimeUnit.MILLISECONDS);
+            Message msg = consumer.receive(100, TimeUnit.MILLISECONDS);
             if (!unackMessages.contains(i)) {
                 consumer.acknowledge(msg);
             }
@@ -660,29 +707,29 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
         receivedMsgs.removeAll(unackMsgs);
         assertTrue(receivedMsgs.isEmpty());
     }
-
+    
     /**
      * </pre>
      * verifies perBroker dispatching blocking. A. maxUnAckPerBroker = 200, maxUnAckPerDispatcher = 20 Now, it tests
      * with 3 subscriptions.
-     *
-     * 1. Subscription-1: try to consume without acking
+     * 
+     * 1. Subscription-1: try to consume without acking 
      *  a. consumer will be blocked after 200 (maxUnAckPerBroker) msgs
-     *  b. even second consumer will not receive any new messages
-     *  c. broker will have 1 blocked dispatcher
-     * 2. Subscription-2: try to consume without acking
-     *  a. as broker is already blocked it will block subscription after 20 msgs (maxUnAckPerDispatcher)
-     *  b. broker will have 2 blocked dispatchers
-     * 3. Subscription-3: try to consume with acking
-     *  a. as consumer is acking not reached maxUnAckPerDispatcher=20 unack msg => consumes all produced msgs
-     * 4.Subscription-1 : acks all pending msgs and consume by acking
-     *  a. broker unblocks all dispatcher and sub-1 consumes all messages
+     *  b. even second consumer will not receive any new messages 
+     *  c. broker will have 1 blocked dispatcher 
+     * 2. Subscription-2: try to consume without acking 
+     *  a. as broker is already blocked it will block subscription after 20 msgs (maxUnAckPerDispatcher) 
+     *  b. broker will have 2 blocked dispatchers 
+     * 3. Subscription-3: try to consume with acking 
+     *  a. as consumer is acking not reached maxUnAckPerDispatcher=20 unack msg => consumes all produced msgs 
+     * 4.Subscription-1 : acks all pending msgs and consume by acking 
+     *  a. broker unblocks all dispatcher and sub-1 consumes all messages 
      * 5. Subscription-2 : it triggers redelivery and acks all messages so, it consumes all produced messages
      * </pre>
-     *
+     * 
      * @throws Exception
      */
-    @Test(timeOut = 10000)
+    @Test
     public void testBlockBrokerDispatching() throws Exception {
         log.info("-- Starting {} test --", methodName);
 
@@ -750,11 +797,6 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                 } else {
                     break;
                 }
-                // once consumer receives maxUnAckPerBroker-msgs then sleep to give a chance to scheduler to block the
-                // subscription
-                if (j == maxUnAckPerBroker) {
-                    Thread.sleep(200);
-                }
             }
             // client must receive number of messages = maxUnAckPerbroker rather all produced messages
             assertNotEquals(messages1.size(), totalProducedMsgs);
@@ -782,10 +824,10 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
              * (2) However, other subscription2 should still be able to consume messages until it reaches to
              * maxUnAckPerDispatcher limit
              **/
-            ConsumerImpl consumerSub2 = (ConsumerImpl) pulsarClient.subscribe(topicName, subscriberName2, conf);
+            consumer1Sub2 = (ConsumerImpl) pulsarClient.subscribe(topicName, subscriberName2, conf);
             Set<MessageId> messages2 = Sets.newHashSet();
             for (int j = 0; j < totalProducedMsgs; j++) {
-                msg = consumerSub2.receive(100, TimeUnit.MILLISECONDS);
+                msg = consumer1Sub2.receive(100, TimeUnit.MILLISECONDS);
                 if (msg != null) {
                     messages2.add(msg.getMessageId());
                 } else {
@@ -829,25 +871,21 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
             assertEquals(blockedDispatchers.size(), 0);
 
             /** (5) try redelivery on sub2 consumer and verify to consume all messages */
-            consumerSub2.redeliverUnacknowledgedMessages();
-            AtomicInteger msgReceivedCount = new AtomicInteger(0);
-            CountDownLatch latch = new CountDownLatch(totalProducedMsgs);
+            consumer1Sub2.redeliverUnacknowledgedMessages();
+            messages2.clear();
             for (int j = 0; j < totalProducedMsgs; j++) {
-                consumerSub2.receiveAsync().thenAccept(m -> {
-                    msgReceivedCount.incrementAndGet();
-                    latch.countDown();
-                    try {
-                        consumerSub2.acknowledge(m);
-                    } catch (PulsarClientException e) {
-                        fail("failed to ack msg", e);
-                    }
-                });
+                msg = consumer1Sub2.receive(100, TimeUnit.MILLISECONDS);
+                if (msg != null) {
+                    messages2.add(msg.getMessageId());
+                    consumer1Sub2.acknowledge(msg);
+                } else {
+                    break;
+                }
             }
-            latch.await();
-            assertEquals(msgReceivedCount.get(), totalProducedMsgs);
+            assertEquals(messages2.size(), totalProducedMsgs);
 
             consumer1Sub1.close();
-            consumerSub2.close();
+            consumer1Sub2.close();
             consumer1Sub3.close();
 
             log.info("-- Exiting {} test --", methodName);
@@ -862,14 +900,14 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
     /**
      * Verifies if broker is already blocked multiple subscriptions if one of them acked back perBrokerDispatcherLimit
      * messages then that dispatcher gets unblocked and starts consuming messages
-     *
+     * 
      * <pre>
      * 1. subscription-1 consume messages and doesn't ack so it reaches maxUnAckPerBroker(200) and blocks sub-1
      * 2. subscription-2 can consume only dispatcherLimitWhenBrokerIsBlocked(20) and then sub-2 gets blocked
      * 3. subscription-2 acks back 10 messages (dispatcherLimitWhenBrokerIsBlocked/2) to gets unblock
      * 4. sub-2 starts acking once it gets unblocked and it consumes all published messages
      * </pre>
-     *
+     * 
      */
     @Test
     public void testBrokerDispatchBlockAndSubAckBackRequiredMsgs() {
@@ -937,11 +975,6 @@ public class DispatcherBlockConsumerTest extends ProducerConsumerBase {
                     messages1.add(msg.getMessageId());
                 } else {
                     break;
-                }
-                // once consumer receives maxUnAckPerBroker-msgs then sleep to give a chance to scheduler to block the
-                // subscription
-                if (j == maxUnAckPerBroker) {
-                    Thread.sleep(200);
                 }
             }
             // client must receive number of messages = maxUnAckPerbroker rather all produced messages

@@ -26,7 +26,7 @@
   <parent>
     <groupId>org.apache.pulsar</groupId>
     <artifactId>pulsar</artifactId>
-    <version>1.22.0-incubating-SNAPSHOT</version>
+    <version>1.19-incubating-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
@@ -110,6 +110,22 @@
       </resource>
     </resources>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <overview>${basedir}/overview.html</overview>
+          <excludePackageNames>org.apache.pulsar.storm.example</excludePackageNames>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>

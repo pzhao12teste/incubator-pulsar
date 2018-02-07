@@ -22,7 +22,6 @@ void export_client();
 void export_message();
 void export_producer();
 void export_consumer();
-void export_reader();
 void export_config();
 void export_enums();
 void export_authentication();
@@ -47,7 +46,6 @@ BOOST_PYTHON_MODULE(_pulsar)
     export_message();
     export_producer();
     export_consumer();
-    export_reader();
     export_config();
     export_enums();
     export_authentication();

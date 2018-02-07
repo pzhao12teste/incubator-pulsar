@@ -17,13 +17,9 @@
 # under the License.
 #
 
-- title: Proven in production
-  content: Pulsar has run in production at Yahoo scale for over 3 years, with millions of messages per second across millions of topics.
-  endpoint: getting-started/ConceptsAndArchitecture
-
 - title: Horizontally scalable
-  content: Seamlessly expand capacity to hundreds of nodes
-  endpoint: getting-started/ConceptsAndArchitecture
+  content: Millions of independent topics and seamless capacity expansion by simply adding machines
+  endpoint: getting-started/ConceptsAndArchitecture/#Architectureoverview
 
 - title: Low latency with durability
   content: Designed for low publish latency (< 5ms) at scale with strong durabilty guarantees
@@ -56,4 +52,4 @@
   content: |
         REST Admin API for provisioning, administration, tools and monitoring. Deploy on bare metal
         or [Kubernetes](https://kubernetes.io).
-  endpoint: admin-api/overview
+  endpoint: admin/AdminInterface

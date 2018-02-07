@@ -51,10 +51,10 @@ abstract class HandlerBase {
         Failed // Handler is failed
     };
 
-    public HandlerBase(PulsarClientImpl client, String topic, Backoff backoff) {
+    public HandlerBase(PulsarClientImpl client, String topic) {
         this.client = client;
         this.topic = topic;
-        this.backoff = backoff;
+        this.backoff = new Backoff(100, TimeUnit.MILLISECONDS, 60, TimeUnit.SECONDS);
         STATE_UPDATER.set(this, State.Uninitialized);
         CLIENT_CNX_UPDATER.set(this, null);
     }
@@ -120,7 +120,7 @@ abstract class HandlerBase {
             log.info("[{}] [{}] Closed connection {} -- Will try again in {} s", topic, getHandlerName(), cnx.channel(),
                     delayMs / 1000.0);
             client.timer().newTimeout(timeout -> {
-                log.info("[{}] [{}] Reconnecting after timeout", topic, getHandlerName());
+                log.warn("[{}] [{}] Reconnecting after timeout", topic, getHandlerName());
                 grabCnx();
             }, delayMs, TimeUnit.MILLISECONDS);
         }

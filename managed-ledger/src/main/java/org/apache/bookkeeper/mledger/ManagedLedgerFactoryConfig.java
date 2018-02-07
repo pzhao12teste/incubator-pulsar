@@ -24,6 +24,8 @@ public class ManagedLedgerFactoryConfig {
     private long maxCacheSize = 128 * MB;
     private double cacheEvictionWatermark = 0.90;
 
+    private boolean useProtobufBinaryFormatInZK = false;
+
     public long getMaxCacheSize() {
         return maxCacheSize;
     }
@@ -51,6 +53,14 @@ public class ManagedLedgerFactoryConfig {
     public ManagedLedgerFactoryConfig setCacheEvictionWatermark(double cacheEvictionWatermark) {
         this.cacheEvictionWatermark = cacheEvictionWatermark;
         return this;
+    }
+
+    public boolean useProtobufBinaryFormatInZK() {
+        return useProtobufBinaryFormatInZK;
+    }
+
+    public void setUseProtobufBinaryFormatInZK(boolean useProtobufBinaryFormatInZK) {
+        this.useProtobufBinaryFormatInZK = useProtobufBinaryFormatInZK;
     }
 
 }

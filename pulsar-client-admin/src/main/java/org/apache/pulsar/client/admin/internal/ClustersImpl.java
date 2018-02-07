@@ -18,7 +18,6 @@
  */
 package org.apache.pulsar.client.admin.internal;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +30,6 @@ import org.apache.pulsar.client.admin.Clusters;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.FailureDomain;
 import org.apache.pulsar.common.policies.data.ErrorData;
 import org.apache.pulsar.common.policies.data.NamespaceIsolationData;
 
@@ -81,17 +79,6 @@ public class ClustersImpl extends BaseResource implements Clusters {
         } catch (Exception e) {
             throw getApiException(e);
         }
-    }
-
-    @Override
-    public void updatePeerClusterNames(String cluster, LinkedHashSet<String> peerClusterNames) throws PulsarAdminException {
-        try {
-            request(clusters.path(cluster).path("peers")).post(Entity.entity(peerClusterNames, MediaType.APPLICATION_JSON),
-                    ErrorData.class);
-        } catch (Exception e) {
-            throw getApiException(e);
-        }
-        
     }
 
     @Override
@@ -147,51 +134,6 @@ public class ClustersImpl extends BaseResource implements Clusters {
         try {
             return request(clusters.path(cluster).path("namespaceIsolationPolicies").path(policyName)).get(
                     NamespaceIsolationData.class);
-        } catch (Exception e) {
-            throw getApiException(e);
-        }
-    }
-
-    @Override
-    public void createFailureDomain(String cluster, String domainName, FailureDomain domain) throws PulsarAdminException {
-        setDomain(cluster, domainName, domain);
-    }
-
-    @Override
-    public void updateFailureDomain(String cluster, String domainName, FailureDomain domain) throws PulsarAdminException {
-        setDomain(cluster, domainName, domain);
-    }
-
-    @Override
-    public void deleteFailureDomain(String cluster, String domainName) throws PulsarAdminException {
-        request(clusters.path(cluster).path("failureDomains").path(domainName)).delete(ErrorData.class);
-    }
-
-    @Override
-    public Map<String, FailureDomain> getFailureDomains(String cluster) throws PulsarAdminException {
-        try {
-            return request(clusters.path(cluster).path("failureDomains"))
-                    .get(new GenericType<Map<String, FailureDomain>>() {
-                    });
-        } catch (Exception e) {
-            throw getApiException(e);
-        }
-    }
-
-    @Override
-    public FailureDomain getFailureDomain(String cluster, String domainName) throws PulsarAdminException {
-        try {
-            return request(clusters.path(cluster).path("failureDomains").path(domainName)).get(FailureDomain.class);
-        } catch (Exception e) {
-            throw getApiException(e);
-        }
-    }
-    
-    private void setDomain(String cluster, String domainName,
-            FailureDomain domain) throws PulsarAdminException {
-        try {
-            request(clusters.path(cluster).path("failureDomains").path(domainName)).post(
-                    Entity.entity(domain, MediaType.APPLICATION_JSON), ErrorData.class);
         } catch (Exception e) {
             throw getApiException(e);
         }

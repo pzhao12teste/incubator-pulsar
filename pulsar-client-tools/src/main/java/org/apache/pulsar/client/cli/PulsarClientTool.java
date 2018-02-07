@@ -100,13 +100,12 @@ public class PulsarClientTool {
 
     public int run(String[] args) {
         try {
-            commandParser.parse(args);
-
             if (isBlank(this.serviceURL)) {
                 commandParser.usage();
                 return -1;
             }
 
+            commandParser.parse(args);
             if (help) {
                 commandParser.usage();
                 return 0;

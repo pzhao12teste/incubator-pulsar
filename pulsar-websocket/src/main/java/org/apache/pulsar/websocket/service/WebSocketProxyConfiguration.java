@@ -67,9 +67,7 @@ public class WebSocketProxyConfiguration implements PulsarConfiguration {
     // do all admin operations and publish/consume from all topics
     private Set<String> superUserRoles = Sets.newTreeSet();
 
-    // Allow wildcard matching in authorization
-    // (wildcard matching only applicable if wildcard-char:
-    // * presents at first or last position eg: *.pulsar.service, pulsar.service.*)
+    // Actions that can be authorized by using permitted role name which contains wildcard
     private boolean authorizationAllowWildcardsMatching = false;
 
     // Authentication settings of the proxy itself. Used to connect to brokers
@@ -80,9 +78,6 @@ public class WebSocketProxyConfiguration implements PulsarConfiguration {
     private int numIoThreads = Runtime.getRuntime().availableProcessors();
     // Number of connections per Broker in Pulsar Client used in WebSocket proxy
     private int connectionsPerBroker = Runtime.getRuntime().availableProcessors();
-
-    // When this parameter is not empty, unauthenticated users perform as anonymousUserRole
-    private String anonymousUserRole = null;
 
     /***** --- TLS --- ****/
     // Enable TLS
@@ -241,14 +236,6 @@ public class WebSocketProxyConfiguration implements PulsarConfiguration {
     public int getConnectionsPerBroker() { return connectionsPerBroker; }
 
     public void setConnectionsPerBroker(int connectionsPerBroker) { this.connectionsPerBroker = connectionsPerBroker; }
-
-    public String getAnonymousUserRole() {
-        return anonymousUserRole;
-    }
-
-    public void setAnonymousUserRole(String anonymousUserRole) {
-        this.anonymousUserRole = anonymousUserRole;
-    }
 
     public boolean isTlsEnabled() {
         return tlsEnabled;

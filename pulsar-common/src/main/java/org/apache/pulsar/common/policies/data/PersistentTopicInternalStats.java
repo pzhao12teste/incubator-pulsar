@@ -59,10 +59,6 @@ public class PersistentTopicInternalStats {
         public String individuallyDeletedMessages;
         public String lastLedgerSwitchTimestamp;
         public String state;
-        public long numberOfEntriesSinceFirstNotAckedMessage;
-        public int totalNonContiguousDeletedMessagesRange;
-        
-        public Map<String, Long> properties;
     }
 
 }

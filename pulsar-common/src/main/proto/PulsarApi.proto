@@ -34,17 +34,6 @@ message KeyValue {
 	required string value = 2;
 }
 
-message KeyLongValue {
-        required string key = 1;
-        required uint64 value = 2;
-}
-
-message EncryptionKeys {
-	required string key = 1;
-	required bytes value = 2;
-	repeated KeyValue metadata = 3;
-}
-
 enum CompressionType {
 	NONE   = 0;
 	LZ4    = 1;
@@ -71,16 +60,6 @@ message MessageMetadata {
 	//optional sfixed64 checksum = 10;
 	// differentiate single and batch message metadata
 	optional int32 num_messages_in_batch = 11 [default = 1];
-
-	// the timestamp that this event occurs. it is typically set by applications.
-	// if this field is omitted, `publish_time` can be used for the purpose of `event_time`.
-	optional uint64 event_time = 12 [default = 0];
-	// Contains encryption key name, encrypted key and metadata to describe the key
-	repeated EncryptionKeys encryption_keys = 13;
-	// Algorithm used to encrypt data key
-	optional string encryption_algo = 14;
-	// Additional parameters required by encryption
-	optional bytes encryption_param = 15;
 }
 
 
@@ -109,9 +88,6 @@ enum ServerError {
     ConsumerNotFound = 13; // Consumer not found
     TooManyRequests = 14; // Error with too many simultaneously request
     TopicTerminatedError = 15; // The topic has been terminated
-
-    ProducerBusy         = 16; // Producer with same name is already connected
-    InvalidTopicName = 17; // The topic name is not valid
 }
 
 enum AuthMethod {
@@ -181,17 +157,11 @@ message CommandSubscribe {
 	// markd-delete position  on the particular message id and
 	// will send messages from that point
 	optional MessageIdData start_message_id = 9;
-
-	/// Add optional metadata key=value to this consumer
-    repeated KeyValue metadata = 10;
-
-    optional bool read_compacted = 11;
 }
 
 message CommandPartitionedTopicMetadata {
 	required string topic            = 1;
 	required uint64 request_id       = 2;
-	optional string original_principal = 3;
 }
 
 message CommandPartitionedTopicMetadataResponse {
@@ -204,13 +174,13 @@ message CommandPartitionedTopicMetadataResponse {
 	optional LookupType response          = 3;
 	optional ServerError error            = 4;
 	optional string message               = 5;
+
 }
 
 message CommandLookupTopic {
 	required string topic            = 1;
 	required uint64 request_id       = 2;
 	optional bool authoritative      = 3 [default = false];
-	optional string original_principal = 4;
 }
 
 message CommandLookupTopicResponse {
@@ -244,11 +214,6 @@ message CommandProducer {
 	/// If a producer name is specified, the name will be used,
 	/// otherwise the broker will generate a unique name
 	optional string producer_name = 4;
-
-	optional bool encrypted       = 5 [default = false];
-
-    /// Add optional metadata key=value to this producer
-    repeated KeyValue metadata    = 6;
 }
 
 message CommandSend {
@@ -293,11 +258,9 @@ message CommandAck {
 		DecompressionError = 1;
 		ChecksumMismatch = 2;
 		BatchDeSerializeError = 3;
-		DecryptionError = 4;
 	}
 
 	optional ValidationError validation_error = 4;
-        repeated KeyLongValue properties = 5;
 }
 
 message CommandFlow {
@@ -311,14 +274,6 @@ message CommandFlow {
 message CommandUnsubscribe {
 	required uint64 consumer_id = 1;
 	required uint64 request_id  = 2;
-}
-
-// Reset an existing consumer to a particular message id
-message CommandSeek {
-	required uint64 consumer_id = 1;
-	required uint64 request_id  = 2;
-	
-	optional MessageIdData message_id = 3;
 }
 
 // Message sent by broker to client when a topic
@@ -351,10 +306,6 @@ message CommandSuccess {
 message CommandProducerSuccess {
 	required uint64 request_id    = 1;
 	required string producer_name = 2;
-	
-	// The last sequence id that was stored by this producer in the previous session
-	// This will only be meaningful if deduplication has been enabled.
-	optional int64  last_sequence_id = 3 [default = -1];
 }
 
 message CommandError {
@@ -462,7 +413,6 @@ message BaseCommand {
 
 		REACHED_END_OF_TOPIC = 27;
 
-		SEEK = 28;
 	}
 
 	required Type type = 1;
@@ -501,6 +451,4 @@ message BaseCommand {
 	optional CommandConsumerStatsResponse consumerStatsResponse         = 26;
 
 	optional CommandReachedEndOfTopic reachedEndOfTopic  = 27;
-	
-	optional CommandSeek seek = 28;
 }

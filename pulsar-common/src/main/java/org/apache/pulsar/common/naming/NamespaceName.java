@@ -22,14 +22,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Objects;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.util.concurrent.UncheckedExecutionException;
 
 public class NamespaceName implements ServiceUnitId {
 
@@ -38,36 +32,8 @@ public class NamespaceName implements ServiceUnitId {
     private String property;
     private String cluster;
     private String localName;
-    
-    private static final LoadingCache<String, NamespaceName> cache = CacheBuilder.newBuilder().maximumSize(100000)
-            .expireAfterAccess(30, TimeUnit.MINUTES).build(new CacheLoader<String, NamespaceName>() {
-                @Override
-                public NamespaceName load(String name) throws Exception {
-                    return new NamespaceName(name);
-                }
-            });
 
-    public static NamespaceName get(String property, String cluster, String namespace) {
-        validateNamespaceName(property, cluster, namespace);
-        return get(property + '/' + cluster + '/' + namespace);
-    }
-
-    public static NamespaceName get(String namespace) {
-        try {
-            checkNotNull(namespace);
-        } catch (NullPointerException e) {
-            throw new IllegalArgumentException("Invalid null namespace: " + namespace);
-        }
-        try {
-            return cache.get(namespace);
-        } catch (ExecutionException e) {
-            throw (RuntimeException) e.getCause();
-        } catch (UncheckedExecutionException e) {
-            throw (RuntimeException) e.getCause();
-        }
-    }
-
-    private NamespaceName(String namespace) {
+    public NamespaceName(String namespace) {
         try {
             checkNotNull(namespace);
         } catch (NullPointerException e) {
@@ -77,6 +43,14 @@ public class NamespaceName implements ServiceUnitId {
         // Verify it's a proper namespace
         validateNamespaceName(namespace);
         this.namespace = namespace;
+    }
+
+    public NamespaceName(String property, String cluster, String namespace) {
+        validateNamespaceName(property, cluster, namespace);
+        this.namespace = property + '/' + cluster + '/' + namespace;
+        this.property = property;
+        this.cluster = cluster;
+        this.localName = namespace;
     }
 
     public String getProperty() {
@@ -188,5 +162,4 @@ public class NamespaceName implements ServiceUnitId {
     public boolean includes(DestinationName dn) {
         return this.equals(dn.getNamespaceObject());
     }
-
 }

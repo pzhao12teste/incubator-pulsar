@@ -24,8 +24,6 @@ import org.apache.pulsar.client.admin.BrokerStats;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.common.stats.AllocatorStats;
-import org.apache.pulsar.policies.data.loadbalancer.LoadManagerReport;
-import org.apache.pulsar.policies.data.loadbalancer.LocalBrokerData;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -84,10 +82,10 @@ public class BrokerStatsImpl extends BaseResource implements BrokerStats {
         }
     }
 
-    @Override
-    public LoadManagerReport getLoadReport() throws PulsarAdminException {
+    public JsonObject getLoadReport() throws PulsarAdminException {
         try {
-            return request(brokerStats.path("/load-report")).get(LocalBrokerData.class);
+            String json = request(brokerStats.path("/load-report")).get(String.class);
+            return new Gson().fromJson(json, JsonObject.class);
         } catch (Exception e) {
             throw getApiException(e);
         }

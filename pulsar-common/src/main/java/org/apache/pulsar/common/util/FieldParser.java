@@ -18,6 +18,8 @@
  */
 package org.apache.pulsar.common.util;
 
+import org.apache.pulsar.common.policies.data.AuthAction;
+
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
 
@@ -30,8 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import io.netty.util.internal.StringUtil;
 
 /**
  *
@@ -192,12 +192,7 @@ public final class FieldParser {
      * @return The converted Integer value.
      */
     public static Integer stringToInteger(String val) {
-        String v = trim(val);
-        if (StringUtil.isNullOrEmpty(v)) {
-            return null;
-        } else {
-            return Integer.valueOf(v);
-        }
+        return Integer.valueOf(trim(val));
     }
 
     /**
@@ -219,12 +214,7 @@ public final class FieldParser {
      * @return The converted Double value.
      */
     public static Double stringToDouble(String val) {
-        String v = trim(val);
-        if (StringUtil.isNullOrEmpty(v)) {
-            return null;
-        } else {
-            return Double.valueOf(v);
-        }
+        return Double.valueOf(trim(val));
     }
 
     /**

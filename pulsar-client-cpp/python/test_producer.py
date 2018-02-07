@@ -30,9 +30,9 @@ producer = client.create_producer(
                     batching_max_publish_delay_ms=10
                 )
 
-for i in range(10):
+while True:
     try:
-        producer.send('hello', None)
+        producer.send_async('hello', None)
     except Exception as e:
         print("Failed to send message: %s", e)
 

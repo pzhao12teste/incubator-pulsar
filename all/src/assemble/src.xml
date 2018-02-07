@@ -42,9 +42,7 @@
         <include>**/conf/**</include>
         <include>**/bin/**</include>
         <include>**/*.txt</include>
-        <include>docker/**</include>
-        <include>dashboard/**</include>
-        <include>deployment/**</include>
+        <include>doc/*</include>
       </includes>
       <excludes>
         <exclude>.git/**</exclude>
@@ -68,8 +66,6 @@
         <exclude>pulsar-client-cpp/examples/SampleConsumer</exclude>
         <exclude>pulsar-client-cpp/examples/SampleConsumerListener</exclude>
         <exclude>pulsar-client-cpp/examples/SampleProducer</exclude>
-        <exclude>pulsar-client-cpp/perf/perfProducer</exclude>
-        <exclude>pulsar-client-cpp/perf/perfConsumer</exclude>
 
         <exclude>**/python/dist/**</exclude>
         <exclude>**/python/wheelhouse/**</exclude>
@@ -87,6 +83,10 @@
         <exclude>**/*.so.*</exclude>
         <exclude>**/*.dylib</exclude>
       </excludes>
+    </fileSet>
+    <fileSet>
+      <directory>target/site/apidocs</directory>
+      <outputDirectory>doc/apidocs</outputDirectory>
     </fileSet>
   </fileSets>
 </assembly>

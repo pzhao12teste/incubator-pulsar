@@ -28,7 +28,6 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.authorization.AuthorizationManager;
 import org.apache.pulsar.broker.cache.ConfigurationCacheService;
-import org.apache.pulsar.common.configuration.PulsarConfigurationLoader;
 import org.apache.pulsar.common.util.netty.EventLoopUtil;
 import org.apache.pulsar.discovery.service.server.ServiceConfig;
 import org.apache.pulsar.zookeeper.ZooKeeperClientFactory;
@@ -80,7 +79,7 @@ public class DiscoveryService implements Closeable {
     public void start() throws Exception {
         discoveryProvider = new BrokerDiscoveryProvider(this.config, getZooKeeperClientFactory());
         this.configurationCacheService = new ConfigurationCacheService(discoveryProvider.globalZkCache);
-        ServiceConfiguration serviceConfiguration = PulsarConfigurationLoader.convertFrom(config);
+        ServiceConfiguration serviceConfiguration = createServiceConfiguration(config);
         authenticationService = new AuthenticationService(serviceConfiguration);
         authorizationManager = new AuthorizationManager(serviceConfiguration, configurationCacheService);
         startServer();
@@ -105,13 +104,13 @@ public class DiscoveryService implements Closeable {
         bootstrap.childHandler(new ServiceChannelInitializer(this, config, false));
         // Bind and start to accept incoming connections.
         bootstrap.bind(config.getServicePort()).sync();
-        LOG.info("Started Pulsar Discovery service on port {}", config.getServicePort());
+        LOG.info("Started Pulsar Broker service on port {}", config.getWebServicePort());
 
         if (config.isTlsEnabled()) {
             ServerBootstrap tlsBootstrap = bootstrap.clone();
             tlsBootstrap.childHandler(new ServiceChannelInitializer(this, config, true));
             tlsBootstrap.bind(config.getServicePortTls()).sync();
-            LOG.info("Started Pulsar Discovery TLS service on port {}", config.getServicePortTls());
+            LOG.info("Started Pulsar Broker TLS service on port {}", config.getWebServicePortTls());
         }
     }
 
@@ -131,6 +130,16 @@ public class DiscoveryService implements Closeable {
         discoveryProvider.close();
         acceptorGroup.shutdownGracefully();
         workerGroup.shutdownGracefully();
+    }
+
+    private ServiceConfiguration createServiceConfiguration(ServiceConfig config) {
+        ServiceConfiguration serviceConfiguration = new ServiceConfiguration();
+        serviceConfiguration.setAuthenticationEnabled(config.isAuthenticationEnabled());
+        serviceConfiguration.setAuthorizationEnabled(config.isAuthorizationEnabled());
+        serviceConfiguration.setAuthenticationProviders(config.getAuthenticationProviders());
+        serviceConfiguration.setAuthorizationAllowWildcardsMatching(config.getAuthorizationAllowWildcardsMatching());
+        serviceConfiguration.setProperties(config.getProperties());
+        return serviceConfiguration;
     }
 
     /**

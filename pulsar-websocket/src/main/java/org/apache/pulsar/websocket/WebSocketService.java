@@ -23,6 +23,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -39,10 +40,8 @@ import org.apache.pulsar.broker.cache.ConfigurationCacheService;
 import org.apache.pulsar.client.api.ClientConfiguration;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.common.configuration.PulsarConfigurationLoader;
 import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.common.util.collections.ConcurrentOpenHashMap;
-import org.apache.pulsar.common.util.collections.ConcurrentOpenHashSet;
 import org.apache.pulsar.websocket.service.WebSocketProxyConfiguration;
 import org.apache.pulsar.websocket.stats.ProxyStats;
 import org.apache.pulsar.zookeeper.GlobalZooKeeperCache;
@@ -52,6 +51,8 @@ import org.apache.pulsar.zookeeper.ZookeeperClientFactoryImpl;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.beust.jcommander.internal.Lists;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
 
@@ -67,9 +68,8 @@ public class WebSocketService implements Closeable {
     AuthorizationManager authorizationManager;
     PulsarClient pulsarClient;
 
-    private final ScheduledExecutorService executor = Executors
-            .newScheduledThreadPool(WebSocketProxyConfiguration.WEBSOCKET_SERVICE_THREADS,
-                    new DefaultThreadFactory("pulsar-websocket"));
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(
+            WebSocketProxyConfiguration.WEBSOCKET_SERVICE_THREADS, new DefaultThreadFactory("pulsar-websocket"));
     private final OrderedSafeExecutor orderedExecutor = new OrderedSafeExecutor(
             WebSocketProxyConfiguration.GLOBAL_ZK_THREADS, "pulsar-websocket-ordered");
     private GlobalZooKeeperCache globalZkCache;
@@ -78,13 +78,12 @@ public class WebSocketService implements Closeable {
     private ConfigurationCacheService configurationCacheService;
 
     private ClusterData localCluster;
-    private final ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ProducerHandler>> topicProducerMap;
-    private final ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ConsumerHandler>> topicConsumerMap;
-    private final ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ReaderHandler>> topicReaderMap;
+    private final ConcurrentOpenHashMap<String, List<ProducerHandler>> topicProducerMap;
+    private final ConcurrentOpenHashMap<String, List<ConsumerHandler>> topicConsumerMap;
     private final ProxyStats proxyStats;
 
     public WebSocketService(WebSocketProxyConfiguration config) {
-        this(createClusterData(config), PulsarConfigurationLoader.convertFrom(config));
+        this(createClusterData(config), createServiceConfiguration(config));
     }
 
     public WebSocketService(ClusterData localCluster, ServiceConfiguration config) {
@@ -92,7 +91,6 @@ public class WebSocketService implements Closeable {
         this.localCluster = localCluster;
         this.topicProducerMap = new ConcurrentOpenHashMap<>();
         this.topicConsumerMap = new ConcurrentOpenHashMap<>();
-        this.topicReaderMap = new ConcurrentOpenHashMap<>();
         this.proxyStats = new ProxyStats(this);
     }
 
@@ -184,8 +182,7 @@ public class WebSocketService implements Closeable {
         clientConf.setIoThreads(config.getWebSocketNumIoThreads());
         clientConf.setConnectionsPerBroker(config.getWebSocketConnectionsPerBroker());
 
-        if (isNotBlank(config.getBrokerClientAuthenticationPlugin())
-                && isNotBlank(config.getBrokerClientAuthenticationParameters())) {
+        if (config.isAuthenticationEnabled()) {
             clientConf.setAuthentication(config.getBrokerClientAuthenticationPlugin(),
                     config.getBrokerClientAuthenticationParameters());
         }
@@ -211,6 +208,30 @@ public class WebSocketService implements Closeable {
         } else {
             return null;
         }
+    }
+
+    private static ServiceConfiguration createServiceConfiguration(WebSocketProxyConfiguration config) {
+        ServiceConfiguration serviceConfig = new ServiceConfiguration();
+        serviceConfig.setClusterName(config.getClusterName());
+        serviceConfig.setWebServicePort(config.getWebServicePort());
+        serviceConfig.setWebServicePortTls(config.getWebServicePortTls());
+        serviceConfig.setAuthenticationEnabled(config.isAuthenticationEnabled());
+        serviceConfig.setAuthenticationProviders(config.getAuthenticationProviders());
+        serviceConfig.setBrokerClientAuthenticationPlugin(config.getBrokerClientAuthenticationPlugin());
+        serviceConfig.setBrokerClientAuthenticationParameters(config.getBrokerClientAuthenticationParameters());
+        serviceConfig.setAuthorizationEnabled(config.isAuthorizationEnabled());
+        serviceConfig.setAuthorizationAllowWildcardsMatching(config.getAuthorizationAllowWildcardsMatching());
+        serviceConfig.setSuperUserRoles(config.getSuperUserRoles());
+        serviceConfig.setGlobalZookeeperServers(config.getGlobalZookeeperServers());
+        serviceConfig.setZooKeeperSessionTimeoutMillis(config.getZooKeeperSessionTimeoutMillis());
+        serviceConfig.setTlsEnabled(config.isTlsEnabled());
+        serviceConfig.setTlsTrustCertsFilePath(config.getTlsTrustCertsFilePath());
+        serviceConfig.setTlsCertificateFilePath(config.getTlsCertificateFilePath());
+        serviceConfig.setTlsKeyFilePath(config.getTlsKeyFilePath());
+        serviceConfig.setTlsAllowInsecureConnection(config.isTlsAllowInsecureConnection());
+        serviceConfig.setWebSocketNumIoThreads(config.getNumIoThreads());
+        serviceConfig.setWebSocketConnectionsPerBroker(config.getConnectionsPerBroker());
+        return serviceConfig;
     }
 
     private ClusterData retrieveClusterData() throws PulsarServerException {
@@ -251,12 +272,11 @@ public class WebSocketService implements Closeable {
     }
 
     public boolean addProducer(ProducerHandler producer) {
-        return topicProducerMap
-                .computeIfAbsent(producer.getProducer().getTopic(), topic -> new ConcurrentOpenHashSet<>())
+        return topicProducerMap.computeIfAbsent(producer.getProducer().getTopic(), topic -> Lists.newArrayList())
                 .add(producer);
     }
 
-    public ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ProducerHandler>> getProducers() {
+    public ConcurrentOpenHashMap<String, List<ProducerHandler>> getProducers() {
         return topicProducerMap;
     }
 
@@ -269,12 +289,11 @@ public class WebSocketService implements Closeable {
     }
 
     public boolean addConsumer(ConsumerHandler consumer) {
-        return topicConsumerMap
-                .computeIfAbsent(consumer.getConsumer().getTopic(), topic -> new ConcurrentOpenHashSet<>())
+        return topicConsumerMap.computeIfAbsent(consumer.getConsumer().getTopic(), topic -> Lists.newArrayList())
                 .add(consumer);
     }
 
-    public ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ConsumerHandler>> getConsumers() {
+    public ConcurrentOpenHashMap<String, List<ConsumerHandler>> getConsumers() {
         return topicConsumerMap;
     }
 
@@ -282,23 +301,6 @@ public class WebSocketService implements Closeable {
         final String topicName = consumer.getConsumer().getTopic();
         if (topicConsumerMap.containsKey(topicName)) {
             return topicConsumerMap.get(topicName).remove(consumer);
-        }
-        return false;
-    }
-
-    public boolean addReader(ReaderHandler reader) {
-        return topicReaderMap.computeIfAbsent(reader.getConsumer().getTopic(), topic -> new ConcurrentOpenHashSet<>())
-                .add(reader);
-    }
-
-    public ConcurrentOpenHashMap<String, ConcurrentOpenHashSet<ReaderHandler>> getReaders() {
-        return topicReaderMap;
-    }
-
-    public boolean removeReader(ReaderHandler reader) {
-        final String topicName = reader.getConsumer().getTopic();
-        if (topicReaderMap.containsKey(topicName)) {
-            return topicReaderMap.get(topicName).remove(reader);
         }
         return false;
     }

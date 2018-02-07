@@ -22,7 +22,6 @@ import static java.lang.String.format;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -36,7 +35,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.resolver.InetSocketAddressResolver;
 
 public class BinaryProtoLookupService implements LookupService {
 
@@ -51,10 +49,7 @@ public class BinaryProtoLookupService implements LookupService {
         URI uri;
         try {
             uri = new URI(serviceUrl);
-
-            // Don't attempt to resolve the hostname in DNS at this point. It will be done each time when attempting to
-            // connect
-            this.serviceAddress = InetSocketAddress.createUnresolved(uri.getHost(), uri.getPort());
+            this.serviceAddress = new InetSocketAddress(uri.getHost(), uri.getPort());
         } catch (Exception e) {
             log.error("Invalid service-url {} provided {}", serviceUrl, e.getMessage(), e);
             throw new PulsarClientException.InvalidServiceURL(e);
@@ -64,8 +59,7 @@ public class BinaryProtoLookupService implements LookupService {
     /**
      * Calls broker binaryProto-lookup api to find broker-service address which can serve a given topic.
      *
-     * @param destination:
-     *            topic-name
+     * @param destination: topic-name
      * @return broker-socket-address that serves given topic
      */
     public CompletableFuture<Pair<InetSocketAddress, InetSocketAddress>> getBroker(DestinationName destination) {
@@ -79,6 +73,7 @@ public class BinaryProtoLookupService implements LookupService {
     public CompletableFuture<PartitionedTopicMetadata> getPartitionedTopicMetadata(DestinationName destination) {
         return getPartitionedTopicMetadata(serviceAddress, destination);
     }
+
 
     private CompletableFuture<Pair<InetSocketAddress, InetSocketAddress>> findBroker(InetSocketAddress socketAddress,
             boolean authoritative, DestinationName destination) {
@@ -98,7 +93,7 @@ public class BinaryProtoLookupService implements LookupService {
                         uri = new URI(serviceUrl);
                     }
 
-                    InetSocketAddress responseBrokerAddress = InetSocketAddress.createUnresolved(uri.getHost(), uri.getPort());
+                    InetSocketAddress responseBrokerAddress = new InetSocketAddress(uri.getHost(), uri.getPort());
 
                     // (2) redirect to given address if response is: redirect
                     if (lookupDataResult.redirect) {
@@ -132,7 +127,7 @@ public class BinaryProtoLookupService implements LookupService {
             }).exceptionally((sendException) -> {
                 // lookup failed
                 log.warn("[{}] failed to send lookup request : {}", destination.toString(), sendException.getMessage(),
-                        sendException instanceof ClosedChannelException ? null : sendException);
+                        sendException);
                 addressFuture.completeExceptionally(sendException);
                 return null;
             });
@@ -142,6 +137,7 @@ public class BinaryProtoLookupService implements LookupService {
         });
         return addressFuture;
     }
+
 
     private CompletableFuture<PartitionedTopicMetadata> getPartitionedTopicMetadata(InetSocketAddress socketAddress,
             DestinationName destination) {
@@ -174,7 +170,7 @@ public class BinaryProtoLookupService implements LookupService {
     }
 
     public String getServiceUrl() {
-        return serviceAddress.toString();
+    	return serviceAddress.toString();
     }
 
     @Override

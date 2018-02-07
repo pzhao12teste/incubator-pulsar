@@ -81,7 +81,7 @@ public class HttpClient implements Closeable {
             @Override
             public boolean keepAlive(Request ahcRequest, HttpRequest request, HttpResponse response) {
                 // Close connection upon a server error or per HTTP spec
-                return (response.status().code() / 100 != 5) && super.keepAlive(ahcRequest, request, response);
+                return (response.getStatus().code() / 100 != 5) && super.keepAlive(ahcRequest, request, response);
             }
         });
 
@@ -99,7 +99,7 @@ public class HttpClient implements Closeable {
                 }
 
                 confBuilder.setSslContext(sslCtx);
-                confBuilder.setUseInsecureTrustManager(tlsAllowInsecureConnection);
+                confBuilder.setAcceptAnyCertificate(tlsAllowInsecureConnection);
             } catch (Exception e) {
                 throw new PulsarClientException.InvalidConfigurationException(e);
             }
@@ -161,7 +161,7 @@ public class HttpClient implements Closeable {
                     log.warn("[{}] Error during HTTP get request: {}", requestUrl, e.getMessage());
                     future.completeExceptionally(new PulsarClientException(e));
                 }
-            }, MoreExecutors.directExecutor());
+            }, MoreExecutors.sameThreadExecutor());
 
         } catch (Exception e) {
             log.warn("[{}] Failed to get authentication data for lookup: {}", path, e.getMessage());

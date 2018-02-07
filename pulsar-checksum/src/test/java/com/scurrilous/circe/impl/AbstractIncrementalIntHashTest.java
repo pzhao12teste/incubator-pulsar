@@ -15,6 +15,8 @@
  ******************************************************************************/
 package com.scurrilous.circe.impl;
 
+import static org.junit.Assert.*;
+
 import java.nio.ByteBuffer;
 
 import mockit.Expectations;

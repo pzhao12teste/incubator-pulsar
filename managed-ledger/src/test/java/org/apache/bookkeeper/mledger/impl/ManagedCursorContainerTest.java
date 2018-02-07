@@ -23,9 +23,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
@@ -61,11 +59,6 @@ public class ManagedCursorContainerTest {
         }
 
         @Override
-        public Map<String, Long> getProperties() {
-            return Collections.emptyMap();
-        }
-
-        @Override
         public boolean isDurable() {
             return true;
         }
@@ -97,23 +90,12 @@ public class ManagedCursorContainerTest {
 
         @Override
         public void markDelete(Position position) throws ManagedLedgerException {
-            markDelete(position, Collections.emptyMap());
-        }
-
-        @Override
-        public void markDelete(Position position, Map<String, Long> properties) throws ManagedLedgerException {
             this.position = position;
             container.cursorUpdated(this, (PositionImpl) position);
         }
 
         @Override
         public void asyncMarkDelete(Position position, MarkDeleteCallback callback, Object ctx) {
-            fail();
-        }
-
-        @Override
-        public void asyncMarkDelete(Position position, Map<String, Long> properties, MarkDeleteCallback callback,
-                Object ctx) {
             fail();
         }
 
@@ -252,25 +234,6 @@ public class ManagedCursorContainerTest {
         @Override
         public boolean isActive() {
             return true;
-        }
-
-        @Override
-        public long getNumberOfEntriesSinceFirstNotAckedMessage() {
-            return 0;
-        }
-
-        @Override
-        public int getTotalNonContiguousDeletedMessagesRange() {
-            return 0;
-        }
-
-        @Override
-        public void setThrottleMarkDelete(double throttleMarkDelete) {
-        }
-
-        @Override
-        public double getThrottleMarkDelete() {
-            return -1;
         }
     }
 

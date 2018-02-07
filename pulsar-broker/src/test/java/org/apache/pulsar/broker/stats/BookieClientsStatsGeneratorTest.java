@@ -55,7 +55,7 @@ public class BookieClientsStatsGeneratorTest extends BrokerTestBase {
         Map<String, Map<String, PendingBookieOpsStats>> stats = BookieClientStatsGenerator.generate(super.getPulsar());
         assertEquals((boolean) stats.isEmpty(), true);
     }
-
+    
     @Test
     public void testJvmDirectMemoryUsedMetric() throws Exception {
         PooledByteBufAllocator allocator = new PooledByteBufAllocator( //
@@ -66,8 +66,7 @@ public class BookieClientsStatsGeneratorTest extends BrokerTestBase {
                 11, // maxOrder
                 64, // tinyCacheSize
                 32, // smallCacheSize
-                8, // normalCacheSize
-                true // Cache all threads
+                8 // normalCacheSize
         );
         int allocateMemory = 17777216;
         long directMemory1 = JvmMetrics.getJvmDirectMemoryUsed();
@@ -83,6 +82,6 @@ public class BookieClientsStatsGeneratorTest extends BrokerTestBase {
         buf2.release();
         directMemory2 = JvmMetrics.getJvmDirectMemoryUsed();
         assertEquals(directMemory2, directMemory1);
-
+        
     }
 }

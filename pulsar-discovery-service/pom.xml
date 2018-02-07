@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.apache.pulsar</groupId>
     <artifactId>pulsar</artifactId>
-    <version>1.22.0-incubating-SNAPSHOT</version>
+    <version>1.19-incubating-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
@@ -70,7 +70,7 @@
       <artifactId>pulsar-common</artifactId>
       <version>${project.version}</version>
     </dependency>
-
+    
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>pulsar-broker-common</artifactId>
@@ -123,10 +123,34 @@
     </dependency>
 
     <dependency>
+      <artifactId>log4j</artifactId>
+      <groupId>log4j</groupId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
       <groupId>com.wordnik</groupId>
       <artifactId>swagger-annotations</artifactId>
     </dependency>
 
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.powermock</groupId>
+      <artifactId>powermock-api-mockito</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.powermock</groupId>
+      <artifactId>powermock-module-testng</artifactId>
+      <scope>test</scope>
+    </dependency>
+    
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>pulsar-zookeeper-utils</artifactId>
@@ -135,28 +159,6 @@
       <type>test-jar</type>
     </dependency>
 
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>buildtools</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <properties>
-            <property>
-              <name>listener</name>
-              <value>org.apache.pulsar.tests.AnnotationListener</value>
-            </property>
-          </properties>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
 </project>

@@ -28,15 +28,17 @@ using namespace pulsar;
 using namespace boost::posix_time;
 
 class Service {
-   private:
+ private:
     std::string serviceName_;
     time_duration sleepDuration_;
     Latch latch_;
     boost::thread thread_;
 
-   public:
+ public:
     Service(const std::string& serviceName, time_duration sleepDuration, const Latch& latch)
-        : serviceName_(serviceName), sleepDuration_(sleepDuration), latch_(latch) {
+            : serviceName_(serviceName),
+              sleepDuration_(sleepDuration),
+              latch_(latch) {
         thread_ = boost::thread(&Service::run, this);
     }
 
@@ -46,7 +48,9 @@ class Service {
         latch_.countdown();
     }
 
-    ~Service() { thread_.join(); }
+    ~Service() {
+        thread_.join();
+    }
 };
 
 TEST(LatchTest, testCountDown) {

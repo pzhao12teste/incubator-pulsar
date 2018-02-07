@@ -44,7 +44,6 @@ lib*.so*
 /system-test/SystemTest
 
 # IDE generated files
-.csettings
 .cproject
 .project
 .settings/
@@ -64,5 +63,3 @@ Makefile
 cmake_install.cmake
 CMakeFiles
 CMakeCache.txt
-
-pulsar-dist

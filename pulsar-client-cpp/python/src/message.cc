@@ -20,30 +20,16 @@
 
 #include <boost/python/suite/indexing/map_indexing_suite.hpp>
 
-std::string MessageId_str(const BatchMessageId& msgId) {
+std::string MessageId_str(const MessageId& msgId) {
     std::stringstream ss;
     ss << msgId;
     return ss.str();
-}
-
-std::string MessageId_serialize(const BatchMessageId& msgId) {
-    std::string serialized;
-    msgId.serialize(serialized);
-    return serialized;
 }
 
 std::string Message_str(const Message& msg) {
     std::stringstream ss;
     ss << msg;
     return ss.str();
-}
-
-boost::python::object Message_data(const Message& msg) {
-    return boost::python::object(boost::python::handle<>(PyBytes_FromStringAndSize((const char*)msg.getData(), msg.getLength())));
-}
-
-const BatchMessageId& Message_getMessageId(const Message& msg) {
-    return static_cast<const BatchMessageId&>(msg.getMessageId());
 }
 
 void export_message() {
@@ -55,9 +41,7 @@ void export_message() {
             .def("content", MessageBuilderSetContentString, return_self<>())
             .def("property", &MessageBuilder::setProperty, return_self<>())
             .def("properties", &MessageBuilder::setProperties, return_self<>())
-            .def("sequence_id", &MessageBuilder::setSequenceId, return_self<>())
             .def("partition_key", &MessageBuilder::setPartitionKey, return_self<>())
-            .def("event_timestamp", &MessageBuilder::setEventTimestamp, return_self<>())
             .def("replication_clusters", &MessageBuilder::setReplicationClusters, return_self<>())
             .def("disable_replication", &MessageBuilder::disableReplication, return_self<>())
             .def("build", &MessageBuilder::build)
@@ -67,25 +51,17 @@ void export_message() {
             .def(map_indexing_suite<Message::StringMap>())
             ;
 
-    static const BatchMessageId& _MessageId_earliest = static_cast<const BatchMessageId&>(MessageId::earliest());
-    static const BatchMessageId& _MessageId_latest = static_cast<const BatchMessageId&>(MessageId::latest());
-
-    class_<BatchMessageId, boost::shared_ptr<BatchMessageId> >("MessageId")
+    class_<MessageId>("MessageId")
             .def("__str__", &MessageId_str)
-            .add_static_property("earliest", make_getter(&_MessageId_earliest))
-            .add_static_property("latest", make_getter(&_MessageId_latest))
-            .def("serialize", &MessageId_serialize)
-            .def("deserialize", &MessageId::deserialize).staticmethod("deserialize")
             ;
 
     class_<Message>("Message")
             .def("properties", &Message::getProperties, return_value_policy<copy_const_reference>())
-            .def("data", &Message_data)
+            .def("data", &Message::getDataAsString)
             .def("length", &Message::getLength)
             .def("partition_key", &Message::getPartitionKey, return_value_policy<copy_const_reference>())
             .def("publish_timestamp", &Message::getPublishTimestamp)
-            .def("event_timestamp", &Message::getEventTimestamp)
-            .def("message_id", &Message_getMessageId, return_value_policy<copy_const_reference>())
+            .def("message_id", &Message::getMessageId, return_value_policy<copy_const_reference>())
             .def("__str__", &Message_str)
             ;
 }

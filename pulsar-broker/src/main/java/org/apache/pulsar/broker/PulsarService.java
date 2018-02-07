@@ -18,8 +18,6 @@
  */
 package org.apache.pulsar.broker;
 
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
-
 import java.io.IOException;
 import java.net.URL;
 import java.util.List;
@@ -35,7 +33,6 @@ import java.util.function.Supplier;
 
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
-import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.apache.pulsar.broker.admin.AdminResource;
 import org.apache.pulsar.broker.cache.ConfigurationCacheService;
 import org.apache.pulsar.broker.cache.LocalZooKeeperCacheService;
@@ -45,7 +42,7 @@ import org.apache.pulsar.broker.loadbalance.LoadManager;
 import org.apache.pulsar.broker.loadbalance.LoadReportUpdaterTask;
 import org.apache.pulsar.broker.loadbalance.LoadResourceQuotaUpdaterTask;
 import org.apache.pulsar.broker.loadbalance.LoadSheddingTask;
-import org.apache.pulsar.broker.loadbalance.impl.LoadManagerShared;
+import org.apache.pulsar.broker.loadbalance.impl.SimpleLoadManagerImpl;
 import org.apache.pulsar.broker.namespace.NamespaceService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.Topic;
@@ -54,7 +51,6 @@ import org.apache.pulsar.broker.stats.prometheus.PrometheusMetricsServlet;
 import org.apache.pulsar.broker.web.WebService;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.util.FutureUtil;
-import org.apache.pulsar.common.configuration.PulsarConfigurationLoader;
 import org.apache.pulsar.common.naming.DestinationName;
 import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceName;
@@ -62,7 +58,6 @@ import org.apache.pulsar.common.policies.data.ClusterData;
 import org.apache.pulsar.utils.PulsarBrokerVersionStringUtils;
 import org.apache.pulsar.websocket.WebSocketConsumerServlet;
 import org.apache.pulsar.websocket.WebSocketProducerServlet;
-import org.apache.pulsar.websocket.WebSocketReaderServlet;
 import org.apache.pulsar.websocket.WebSocketService;
 import org.apache.pulsar.zookeeper.GlobalZooKeeperCache;
 import org.apache.pulsar.zookeeper.LocalZooKeeperCache;
@@ -131,9 +126,6 @@ public class PulsarService implements AutoCloseable {
     private final Condition isClosedCondition = mutex.newCondition();
 
     public PulsarService(ServiceConfiguration config) {
-        // Validate correctness of configuration
-        PulsarConfigurationLoader.isComplete(config);
-
         state = State.Init;
         this.bindAddress = ServiceConfigurationUtils.getDefaultOrConfiguredAddress(config.getBindAddress());
         this.advertisedAddress = advertisedAddress(config);
@@ -278,8 +270,7 @@ public class PulsarService implements AutoCloseable {
             this.webService.addRestResources("/admin", "org.apache.pulsar.broker.admin", true);
             this.webService.addRestResources("/lookup", "org.apache.pulsar.broker.lookup", true);
 
-            this.webService.addServlet("/metrics",
-                    new ServletHolder(new PrometheusMetricsServlet(this, config.exposeTopicLevelMetricsInPrometheus())), false);
+            this.webService.addServlet("/metrics", new ServletHolder(new PrometheusMetricsServlet(this)), false);
 
             if (config.isWebSocketServiceEnabled()) {
                 // Use local broker address to avoid different IP address when using a VIP for service discovery
@@ -291,8 +282,6 @@ public class PulsarService implements AutoCloseable {
                         new ServletHolder(new WebSocketProducerServlet(webSocketService)), true);
                 this.webService.addServlet(WebSocketConsumerServlet.SERVLET_PATH,
                         new ServletHolder(new WebSocketConsumerServlet(webSocketService)), true);
-                this.webService.addServlet(WebSocketReaderServlet.SERVLET_PATH,
-                        new ServletHolder(new WebSocketReaderServlet(webSocketService)), true);
             }
 
             if (LOG.isDebugEnabled()) {
@@ -344,8 +333,7 @@ public class PulsarService implements AutoCloseable {
             acquireSLANamespace();
 
             LOG.info("messaging service is ready, bootstrap service on port={}, broker url={}, cluster={}, configs={}",
-                    config.getWebServicePort(), brokerServiceUrl, config.getClusterName(),
-                    ReflectionToStringBuilder.toString(config));
+                    config.getWebServicePort(), brokerServiceUrl, config.getClusterName(), config);
         } catch (Exception e) {
             LOG.error(e.getMessage(), e);
             throw new PulsarServerException(e);
@@ -357,17 +345,14 @@ public class PulsarService implements AutoCloseable {
     private void acquireSLANamespace() {
         try {
             // Namespace not created hence no need to unload it
-            String nsName = NamespaceService.getSLAMonitorNamespace(getAdvertisedAddress(), config);
             if (!this.globalZkCache.exists(
-                    AdminResource.path(POLICIES) + "/" + nsName)) {
-                LOG.info("SLA Namespace = {} doesn't exist.", nsName);
+                    AdminResource.path("policies") + "/" + NamespaceService.getSLAMonitorNamespace(getAdvertisedAddress(), config))) {
                 return;
             }
 
             boolean acquiredSLANamespace;
             try {
                 acquiredSLANamespace = nsservice.registerSLANamespace();
-                LOG.info("Register SLA Namespace = {}, returned - {}.", nsName, acquiredSLANamespace);
             } catch (PulsarServerException e) {
                 acquiredSLANamespace = false;
             }
@@ -417,7 +402,7 @@ public class PulsarService implements AutoCloseable {
             throw new PulsarServerException(e);
         }
 
-        this.configurationCacheService = new ConfigurationCacheService(getGlobalZkCache(), this.config.getClusterName());
+        this.configurationCacheService = new ConfigurationCacheService(getGlobalZkCache());
         this.localZkCacheService = new LocalZooKeeperCacheService(getLocalZkCache(), this.configurationCacheService);
     }
 
@@ -439,7 +424,7 @@ public class PulsarService implements AutoCloseable {
         if (config.isLoadBalancerEnabled()) {
             LOG.info("Starting load balancer");
             if (this.loadReportTask == null) {
-                long loadReportMinInterval = LoadManagerShared.LOAD_REPORT_UPDATE_MIMIMUM_INTERVAL;
+                long loadReportMinInterval = SimpleLoadManagerImpl.LOAD_REPORT_UPDATE_MIMIMUM_INTERVAL;
                 this.loadReportTask = this.loadManagerExecutor.scheduleAtFixedRate(
                         new LoadReportUpdaterTask(loadManager), loadReportMinInterval, loadReportMinInterval,
                         TimeUnit.MILLISECONDS);

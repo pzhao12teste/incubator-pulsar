@@ -19,6 +19,7 @@
 package org.apache.pulsar.broker.service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.bookkeeper.mledger.ManagedCursor;
@@ -40,8 +41,6 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
-
 public class BacklogQuotaManager {
     private static final Logger log = LoggerFactory.getLogger(BacklogQuotaManager.class);
     private final BacklogQuota defaultQuota;
@@ -60,9 +59,13 @@ public class BacklogQuotaManager {
 
     public BacklogQuota getBacklogQuota(String namespace, String policyPath) {
         try {
-            return zkCache.get(policyPath)
-                    .map(p -> p.backlog_quota_map.getOrDefault(BacklogQuotaType.destination_storage, defaultQuota))
-                    .orElse(defaultQuota);
+            Optional<Policies> policies = zkCache.get(policyPath);
+
+            if (!policies.isPresent()) {
+                return this.defaultQuota;
+            }
+
+            return policies.get().backlog_quota_map.getOrDefault(BacklogQuotaType.destination_storage, defaultQuota);
         } catch (Exception e) {
             log.error(String.format("Failed to read policies data, will apply the default backlog quota: namespace=%s",
                     namespace), e);
@@ -71,7 +74,7 @@ public class BacklogQuotaManager {
     }
 
     public long getBacklogQuotaLimit(String namespace) {
-        String policyPath = AdminResource.path(POLICIES, namespace);
+        String policyPath = AdminResource.path("policies", namespace);
         return getBacklogQuota(namespace, policyPath).getLimit();
     }
 
@@ -84,7 +87,7 @@ public class BacklogQuotaManager {
     public void handleExceededBacklogQuota(PersistentTopic persistentTopic) {
         DestinationName destination = DestinationName.get(persistentTopic.getName());
         String namespace = destination.getNamespace();
-        String policyPath = AdminResource.path(POLICIES, namespace);
+        String policyPath = AdminResource.path("policies", namespace);
 
         BacklogQuota quota = getBacklogQuota(namespace, policyPath);
         log.info("Backlog quota exceeded for topic [{}]. Applying [{}] policy", persistentTopic.getName(),

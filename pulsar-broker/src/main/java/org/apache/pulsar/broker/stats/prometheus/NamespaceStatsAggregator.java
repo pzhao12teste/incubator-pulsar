@@ -20,7 +20,6 @@ package org.apache.pulsar.broker.stats.prometheus;
 
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerMBeanImpl;
 import org.apache.pulsar.broker.PulsarService;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.common.policies.data.ReplicatorStats;
 import org.apache.pulsar.utils.SimpleTextOutputStream;
@@ -36,58 +35,34 @@ public class NamespaceStatsAggregator {
         }
     };
 
-    private static FastThreadLocal<TopicStats> localTopicStats = new FastThreadLocal<TopicStats>() {
-        @Override
-        protected TopicStats initialValue() throws Exception {
-            return new TopicStats();
-        }
-    };
-
-    public static void generate(PulsarService pulsar, boolean includeTopicMetrics, SimpleTextOutputStream stream) {
+    public static void generate(PulsarService pulsar, SimpleTextOutputStream stream) {
         String cluster = pulsar.getConfiguration().getClusterName();
         AggregatedNamespaceStats namespaceStats = localNamespaceStats.get();
-        TopicStats topicStats = localTopicStats.get();
 
         pulsar.getBrokerService().getMultiLayerTopicMap().forEach((namespace, bundlesMap) -> {
             namespaceStats.reset();
 
             bundlesMap.forEach((bundle, topicsMap) -> {
                 topicsMap.forEach((name, topic) -> {
-                    getTopicStats(topic, topicStats);
-
-                    if (includeTopicMetrics) {
-                        TopicStats.printTopicStats(stream, cluster, namespace, name, topicStats);
-                    } else {
-                        namespaceStats.updateStats(topicStats);
-                    }
+                    updateNamespaceStats(namespaceStats, topic);
                 });
             });
 
-            if (!includeTopicMetrics) {
-                // Only include namespace level stats if we don't have the per-topic, otherwise we're going to report
-                // the same data twice, and it will make the aggregation difficult
-                printNamespaceStats(stream, cluster, namespace, namespaceStats);
-            }
+            printNamespaceStats(stream, cluster, namespace, namespaceStats);
         });
     }
 
-    private static void getTopicStats(Topic topic, TopicStats stats) {
-        stats.reset();
+    private static void updateNamespaceStats(AggregatedNamespaceStats stats, PersistentTopic topic) {
+        // Managed Ledger stats
+        ManagedLedgerMBeanImpl mlStats = (ManagedLedgerMBeanImpl) topic.getManagedLedger().getStats();
 
-        if (topic instanceof PersistentTopic) {
-            // Managed Ledger stats
-            ManagedLedgerMBeanImpl mlStats = (ManagedLedgerMBeanImpl) ((PersistentTopic)topic).getManagedLedger().getStats();
+        stats.storageSize += mlStats.getStoredMessagesSize();
+        stats.storageWriteLatencyBuckets.addAll(mlStats.getInternalAddEntryLatencyBuckets());
+        stats.entrySizeBuckets.addAll(mlStats.getInternalEntrySizeBuckets());
 
-            stats.storageSize = mlStats.getStoredMessagesSize();
-
-            stats.storageWriteLatencyBuckets.addAll(mlStats.getInternalAddEntryLatencyBuckets());
-            stats.storageWriteLatencyBuckets.refresh();
-            stats.entrySizeBuckets.addAll(mlStats.getInternalEntrySizeBuckets());
-            stats.entrySizeBuckets.refresh();
-
-            stats.storageWriteRate = mlStats.getAddEntryMessagesRate();
-            stats.storageReadRate = mlStats.getReadEntriesRate();
-        }
+        stats.storageWriteRate = mlStats.getAddEntryMessagesRate();
+        stats.storageReadRate = mlStats.getReadEntriesRate();
+        stats.topicsCount++;
 
         topic.getProducers().forEach(producer -> {
             if (producer.isRemote()) {

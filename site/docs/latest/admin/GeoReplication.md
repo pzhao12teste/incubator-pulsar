@@ -2,34 +2,13 @@
 title: Pulsar geo-replication
 ---
 
-<!--
-
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-
--->
-
 *Geo-replication* is the replication of persistently stored message data across multiple {% popover clusters %} of a Pulsar {% popover instance %}.
 
 ## How it works
 
 The diagram below illustrates the process of geo-replication across Pulsar clusters:
 
-![Replication Diagram](/img/GeoReplication.png)
+![Replication Diagram]({{ site.baseurl }}img/GeoReplication.png)
 
 In this diagram, whenever producers **P1**, **P2**, and **P3** publish messages to the topic **T1** on clusters **Cluster-A**, **Cluster-B**, and **Cluster-C**, respectively, those messages are instantly replicated across clusters. Once replicated, consumers **C1** and **C2** can consume those messages from their respective clusters.
 
@@ -41,7 +20,7 @@ Geo-replication must be enabled on a per-{% popover property %} basis in Pulsar.
 
 Although geo-replication must be enabled between two clusters, it's actually managed at the {% popover namespace %} level. You must do the following to enable geo-replication for a namespace:
 
-* [Create a global namespace](#creating-global-namespaces)
+* [Create a global namespace](#creating-a-global-namespace)
 * Configure that namespace to replicate between two or more provisioned clusters
 
 Any message published on *any* topic in that namespace will then be replicated to all clusters in the specified set.
@@ -105,7 +84,7 @@ Once you've created a global namespace, any topics that producers or consumers c
 
 By default, messages are replicated to all clusters configured for the namespace. You can restrict replication selectively by specifying a replication list for a message. That message will then be replicated only to the subset in the replication list.
 
-Below is an example for the [Java API](../../clients/Java). Note the use of the `setReplicationClusters` method when constructing the {% javadoc Message client org.apache.pulsar.client.api.Message %} object:
+Below is an example for the [Java API](../../applications/JavaClient). Note the use of the `setReplicationClusters` method when constructing the {% javadoc Message client org.apache.pulsar.client.api.Message %} object:
 
 ```java
 List<String> restrictReplicationTo = new ArrayList<>;

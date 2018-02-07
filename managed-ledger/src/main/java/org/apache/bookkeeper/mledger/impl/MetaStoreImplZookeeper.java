@@ -47,6 +47,10 @@ import com.google.protobuf.TextFormat.ParseException;
 
 public class MetaStoreImplZookeeper implements MetaStore {
 
+    public static enum ZNodeProtobufFormat {
+        Text, Binary
+    }
+
     private static final Charset Encoding = Charsets.UTF_8;
     private static final List<ACL> Acl = ZooDefs.Ids.OPEN_ACL_UNSAFE;
 
@@ -54,6 +58,7 @@ public class MetaStoreImplZookeeper implements MetaStore {
     private static final String prefix = prefixName + "/";
 
     private final ZooKeeper zk;
+    private final ZNodeProtobufFormat protobufFormat;
     private final OrderedSafeExecutor executor;
 
     private static class ZKStat implements Stat {
@@ -89,9 +94,14 @@ public class MetaStoreImplZookeeper implements MetaStore {
         }
     }
 
-    public MetaStoreImplZookeeper(ZooKeeper zk, OrderedSafeExecutor executor)
+    public MetaStoreImplZookeeper(ZooKeeper zk, OrderedSafeExecutor executor) throws Exception {
+        this(zk, ZNodeProtobufFormat.Text, executor);
+    }
+
+    public MetaStoreImplZookeeper(ZooKeeper zk, ZNodeProtobufFormat protobufFormat, OrderedSafeExecutor executor)
             throws Exception {
         this.zk = zk;
+        this.protobufFormat = protobufFormat;
         this.executor = executor;
 
         if (zk.exists(prefixName, false) == null) {
@@ -167,7 +177,9 @@ public class MetaStoreImplZookeeper implements MetaStore {
             log.debug("[{}] Updating metadata version={} with content={}", ledgerName, zkStat.version, mlInfo);
         }
 
-        byte[] serializedMlInfo = mlInfo.toByteArray(); // Binary format
+        byte[] serializedMlInfo = protobufFormat == ZNodeProtobufFormat.Text ? //
+                mlInfo.toString().getBytes(Encoding) : // Text format
+                mlInfo.toByteArray(); // Binary format
 
         zk.setData(prefix + ledgerName, serializedMlInfo, zkStat.getVersion(),
                 (rc, path, zkCtx, stat1) -> executor.submit(safeRun(() -> {
@@ -243,7 +255,9 @@ public class MetaStoreImplZookeeper implements MetaStore {
                 info.getCursorsLedgerId(), info.getMarkDeleteLedgerId(), info.getMarkDeleteEntryId());
 
         String path = prefix + ledgerName + "/" + cursorName;
-        byte[] content = info.toByteArray(); // Binary format
+        byte[] content = protobufFormat == ZNodeProtobufFormat.Text ? //
+                info.toString().getBytes(Encoding) : // Text format
+                info.toByteArray(); // Binary format
 
         if (stat == null) {
             if (log.isDebugEnabled()) {
@@ -322,29 +336,60 @@ public class MetaStoreImplZookeeper implements MetaStore {
 
     private ManagedLedgerInfo parseManagedLedgerInfo(byte[] data)
             throws ParseException, InvalidProtocolBufferException {
-        // First try binary format, then fallback to text
-        try {
-            return ManagedLedgerInfo.parseFrom(data);
-        } catch (InvalidProtocolBufferException e) {
-            // Fallback to parsing protobuf text format
-            ManagedLedgerInfo.Builder builder = ManagedLedgerInfo.newBuilder();
-            TextFormat.merge(new String(data, Encoding), builder);
-            return builder.build();
+        if (protobufFormat == ZNodeProtobufFormat.Text) {
+            // First try text format, then fallback to binary
+            try {
+                return parseManagedLedgerInfoFromText(data);
+            } catch (ParseException e) {
+                return parseManagedLedgerInfoFromBinary(data);
+            }
+        } else {
+            // First try binary format, then fallback to text
+            try {
+                return parseManagedLedgerInfoFromBinary(data);
+            } catch (InvalidProtocolBufferException e) {
+                return parseManagedLedgerInfoFromText(data);
+            }
         }
+    }
+
+    private ManagedLedgerInfo parseManagedLedgerInfoFromText(byte[] data) throws ParseException {
+        ManagedLedgerInfo.Builder builder = ManagedLedgerInfo.newBuilder();
+        TextFormat.merge(new String(data, Encoding), builder);
+        return builder.build();
+    }
+
+    private ManagedLedgerInfo parseManagedLedgerInfoFromBinary(byte[] data) throws InvalidProtocolBufferException {
+        return ManagedLedgerInfo.newBuilder().mergeFrom(data).build();
     }
 
     private ManagedCursorInfo parseManagedCursorInfo(byte[] data)
             throws ParseException, InvalidProtocolBufferException {
-        // First try binary format, then fallback to text
-        try {
-            return ManagedCursorInfo.parseFrom(data);
-        } catch (InvalidProtocolBufferException e) {
-            // Fallback to parsing protobuf text format
-            ManagedCursorInfo.Builder builder = ManagedCursorInfo.newBuilder();
-            TextFormat.merge(new String(data, Encoding), builder);
-            return builder.build();
+        if (protobufFormat == ZNodeProtobufFormat.Text) {
+            // First try text format, then fallback to binary
+            try {
+                return parseManagedCursorInfoFromText(data);
+            } catch (ParseException e) {
+                return parseManagedCursorInfoFromBinary(data);
+            }
+        } else {
+            // First try binary format, then fallback to text
+            try {
+                return parseManagedCursorInfoFromBinary(data);
+            } catch (InvalidProtocolBufferException e) {
+                return parseManagedCursorInfoFromText(data);
+            }
         }
+    }
 
+    private ManagedCursorInfo parseManagedCursorInfoFromText(byte[] data) throws ParseException {
+        ManagedCursorInfo.Builder builder = ManagedCursorInfo.newBuilder();
+        TextFormat.merge(new String(data, Encoding), builder);
+        return builder.build();
+    }
+
+    private ManagedCursorInfo parseManagedCursorInfoFromBinary(byte[] data) throws InvalidProtocolBufferException {
+        return ManagedCursorInfo.newBuilder().mergeFrom(data).build();
     }
 
     private static final Logger log = LoggerFactory.getLogger(MetaStoreImplZookeeper.class);

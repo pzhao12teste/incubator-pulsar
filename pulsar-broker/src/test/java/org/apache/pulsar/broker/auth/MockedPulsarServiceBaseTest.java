@@ -28,7 +28,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.apache.bookkeeper.client.BKException;
@@ -60,14 +59,12 @@ import com.google.common.util.concurrent.MoreExecutors;
  */
 public abstract class MockedPulsarServiceBaseTest {
 
-    protected ServiceConfiguration conf;
+    protected final ServiceConfiguration conf;
     protected PulsarService pulsar;
     protected PulsarAdmin admin;
     protected PulsarClient pulsarClient;
     protected URL brokerUrl;
     protected URL brokerUrlTls;
-
-    protected URI lookupUrl;
 
     protected final int BROKER_WEBSERVICE_PORT = PortManager.nextFreePort();
     protected final int BROKER_WEBSERVICE_PORT_TLS = PortManager.nextFreePort();
@@ -77,38 +74,28 @@ public abstract class MockedPulsarServiceBaseTest {
     protected MockZooKeeper mockZookKeeper;
     protected NonClosableMockBookKeeper mockBookKeeper;
     protected boolean isTcpLookup = false;
-    protected final String configClusterName = "test";
 
     private SameThreadOrderedSafeExecutor sameThreadOrderedSafeExecutor;
 
     public MockedPulsarServiceBaseTest() {
-        resetConfig();
-    }
-
-    protected void resetConfig() {
         this.conf = new ServiceConfiguration();
         this.conf.setBrokerServicePort(BROKER_PORT);
         this.conf.setBrokerServicePortTls(BROKER_PORT_TLS);
-        this.conf.setAdvertisedAddress("localhost");
         this.conf.setWebServicePort(BROKER_WEBSERVICE_PORT);
         this.conf.setWebServicePortTls(BROKER_WEBSERVICE_PORT_TLS);
-        this.conf.setClusterName(configClusterName);
+        this.conf.setClusterName("test");
         this.conf.setAdvertisedAddress("localhost"); // there are TLS tests in here, they need to use localhost because of the certificate
-        this.conf.setManagedLedgerCacheSizeMB(8);
-        this.conf.setActiveConsumerFailoverDelayTimeMillis(0);
-        this.conf.setDefaultNumberOfNamespaceBundles(1);
-        this.conf.setZookeeperServers("localhost:2181");
     }
 
     protected final void internalSetup() throws Exception {
         init();
         org.apache.pulsar.client.api.ClientConfiguration clientConf = new org.apache.pulsar.client.api.ClientConfiguration();
         clientConf.setStatsInterval(0, TimeUnit.SECONDS);
-        lookupUrl = new URI(brokerUrl.toString());
+        String lookupUrl = brokerUrl.toString();
         if (isTcpLookup) {
-            lookupUrl = new URI("pulsar://localhost:" + BROKER_PORT);
+            lookupUrl = new URI("pulsar://localhost:" + BROKER_PORT).toString();
         }
-        pulsarClient = PulsarClient.create(lookupUrl.toString(), clientConf);
+        pulsarClient = PulsarClient.create(lookupUrl, clientConf);
     }
 
     protected final void internalSetupForStatsTest() throws Exception {
@@ -139,10 +126,7 @@ public abstract class MockedPulsarServiceBaseTest {
     protected final void internalCleanup() throws Exception {
         try {
             admin.close();
-            // There are some test cases where pulsarClient is not initialized.
-            if (pulsarClient != null) {
-                pulsarClient.close();
-            }
+            pulsarClient.close();
             pulsar.close();
             mockBookKeeper.reallyShutdow();
             mockZookKeeper.shutdown();
@@ -192,7 +176,7 @@ public abstract class MockedPulsarServiceBaseTest {
     }
 
     public static MockZooKeeper createMockZooKeeper() throws Exception {
-        MockZooKeeper zk = MockZooKeeper.newInstance(MoreExecutors.newDirectExecutorService());
+        MockZooKeeper zk = MockZooKeeper.newInstance(MoreExecutors.sameThreadExecutor());
         List<ACL> dummyAclList = new ArrayList<ACL>(0);
 
         ZkUtils.createFullPathOptimistic(zk, "/ledgers/available/192.168.1.1:" + 5000,
@@ -248,16 +232,6 @@ public abstract class MockedPulsarServiceBaseTest {
             // no-op
         }
     };
-
-    public static void retryStrategically(Predicate<Void> predicate, int retryCount, long intSleepTime)
-            throws Exception {
-        for (int i = 0; i < retryCount; i++) {
-            if (predicate.test(null) || i == (retryCount - 1)) {
-                break;
-            }
-            Thread.sleep(intSleepTime + (intSleepTime * i));
-        }
-    }
 
     private static final Logger log = LoggerFactory.getLogger(MockedPulsarServiceBaseTest.class);
 }

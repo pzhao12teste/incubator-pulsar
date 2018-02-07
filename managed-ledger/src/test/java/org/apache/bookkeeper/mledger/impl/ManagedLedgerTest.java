@@ -62,11 +62,12 @@ import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
+import org.apache.bookkeeper.mledger.impl.MetaStoreImplZookeeper.ZNodeProtobufFormat;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.test.MockedBookKeeperTestCase;
-import org.apache.pulsar.common.api.ByteBufPair;
+import org.apache.pulsar.common.api.DoubleByteBuf;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.util.protobuf.ByteBufCodedOutputStream;
 import org.apache.zookeeper.CreateMode;
@@ -75,6 +76,7 @@ import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 import com.google.common.base.Charsets;
@@ -89,6 +91,12 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
     private static final Logger log = LoggerFactory.getLogger(ManagedLedgerTest.class);
 
     private static final Charset Encoding = Charsets.UTF_8;
+
+    @Factory(dataProvider = "protobufFormat")
+    public ManagedLedgerTest(ZNodeProtobufFormat protobufFormat) {
+        super();
+        this.protobufFormat = protobufFormat;
+    }
 
     @Test
     public void managedLedgerApi() throws Exception {
@@ -110,7 +118,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
             // Acknowledge only on last entry
             Entry lastEntry = entries.get(entries.size() - 1);
             cursor.markDelete(lastEntry.getPosition());
-
+            
             for (Entry entry : entries) {
                 log.info("Read entry. Position={} Content='{}'", entry.getPosition(), new String(entry.getData()));
                 entry.release();
@@ -1668,35 +1676,11 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         c1.skipEntries(1, IndividualDeletedEntries.Exclude);
         // let retention expire
         Thread.sleep(1000);
-        ml.internalTrimConsumedLedgers();
-
+        ml.close();
+        // sleep for trim
+        Thread.sleep(100);
         assertTrue(ml.getLedgersInfoAsList().size() <= 1);
         assertTrue(ml.getTotalSize() <= "shortmessage".getBytes().length);
-        ml.close();
-    }
-
-    @Test
-    public void testInfiniteRetention() throws Exception {
-        ManagedLedgerFactory factory = new ManagedLedgerFactoryImpl(bkc, bkc.getZkHandle());
-        ManagedLedgerConfig config = new ManagedLedgerConfig();
-        config.setRetentionSizeInMB(-1);
-        config.setRetentionTime(-1, TimeUnit.HOURS);
-        config.setMaxEntriesPerLedger(1);
-
-        ManagedLedgerImpl ml = (ManagedLedgerImpl) factory.open("retention_test_ledger", config);
-        ManagedCursor c1 = ml.openCursor("c1");
-        ml.addEntry("iamaverylongmessagethatshouldberetained".getBytes());
-        c1.skipEntries(1, IndividualDeletedEntries.Exclude);
-        ml.close();
-
-        // reopen ml
-        ml = (ManagedLedgerImpl) factory.open("retention_test_ledger", config);
-        c1 = ml.openCursor("c1");
-        ml.addEntry("shortmessage".getBytes());
-        c1.skipEntries(1, IndividualDeletedEntries.Exclude);
-        ml.close();
-        assertTrue(ml.getLedgersInfoAsList().size() > 1);
-        assertTrue(ml.getTotalSize() > "shortmessage".getBytes().length);
     }
 
     @Test
@@ -2157,7 +2141,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         headers.writeInt(msgMetadataSize);
         messageData.writeTo(outStream);
         outStream.recycle();
-        return ByteBufPair.coalesce(ByteBufPair.get(headers, payload));
+        return DoubleByteBuf.get(headers, payload);
     }
 
 }

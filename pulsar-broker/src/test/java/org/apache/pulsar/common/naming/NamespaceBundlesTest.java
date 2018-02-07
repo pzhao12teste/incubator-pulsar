@@ -18,10 +18,6 @@
  */
 package org.apache.pulsar.common.naming;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -35,15 +31,11 @@ import java.util.SortedSet;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.pulsar.broker.PulsarService;
-import org.apache.pulsar.broker.cache.LocalZooKeeperCacheService;
 import org.apache.pulsar.common.naming.DestinationName;
 import org.apache.pulsar.common.naming.NamespaceBundle;
 import org.apache.pulsar.common.naming.NamespaceBundleFactory;
 import org.apache.pulsar.common.naming.NamespaceBundles;
 import org.apache.pulsar.common.naming.NamespaceName;
-import org.apache.pulsar.common.policies.data.LocalPolicies;
-import org.apache.pulsar.zookeeper.ZooKeeperDataCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
@@ -56,7 +48,7 @@ import com.google.common.hash.Hashing;
 
 public class NamespaceBundlesTest {
 
-    private final NamespaceBundleFactory factory = getNamespaceBundleFactory();
+    private final NamespaceBundleFactory factory = NamespaceBundleFactory.createFactory(Hashing.crc32());
 
     @SuppressWarnings("unchecked")
     @Test
@@ -69,21 +61,21 @@ public class NamespaceBundlesTest {
         }
 
         try {
-            new NamespaceBundles(NamespaceName.get("pulsar/use/ns2"), (SortedSet<Long>) null, null);
+            new NamespaceBundles(new NamespaceName("pulsar/use/ns2"), (SortedSet<Long>) null, null);
             fail("Should fail w/ null pointer exception");
         } catch (NullPointerException npe) {
             // OK, expected
         }
 
         try {
-            new NamespaceBundles(NamespaceName.get("pulsar.use.ns2"), (SortedSet<Long>) null, null);
+            new NamespaceBundles(new NamespaceName("pulsar.use.ns2"), (SortedSet<Long>) null, null);
             fail("Should fail w/ illegal argument exception");
         } catch (IllegalArgumentException iae) {
             // OK, expected
         }
 
         try {
-            new NamespaceBundles(NamespaceName.get("pulsar/use/ns2"), (SortedSet<Long>) null, factory);
+            new NamespaceBundles(new NamespaceName("pulsar/use/ns2"), (SortedSet<Long>) null, factory);
             fail("Should fail w/ null pointer exception");
         } catch (NullPointerException npe) {
             // OK, expected
@@ -91,7 +83,7 @@ public class NamespaceBundlesTest {
 
         SortedSet<Long> partitions = Sets.newTreeSet();
         try {
-            new NamespaceBundles(NamespaceName.get("pulsar/use/ns2"), partitions, factory);
+            new NamespaceBundles(new NamespaceName("pulsar/use/ns2"), partitions, factory);
             fail("Should fail w/ illegal argument exception");
         } catch (IllegalArgumentException iae) {
             // OK, expected
@@ -101,7 +93,7 @@ public class NamespaceBundlesTest {
         partitions.add(0x10000000l);
         partitions.add(0x40000000l);
         partitions.add(0xffffffffl);
-        NamespaceBundles bundles = new NamespaceBundles(NamespaceName.get("pulsar/use/ns2"), partitions, factory);
+        NamespaceBundles bundles = new NamespaceBundles(new NamespaceName("pulsar/use/ns2"), partitions, factory);
         Field partitionField = NamespaceBundles.class.getDeclaredField("partitions");
         Field nsField = NamespaceBundles.class.getDeclaredField("nsname");
         Field bundlesField = NamespaceBundles.class.getDeclaredField("bundles");
@@ -123,16 +115,6 @@ public class NamespaceBundlesTest {
                 factory.getBundle(nsFld, Range.range(0x40000000l, BoundType.CLOSED, 0xffffffffl, BoundType.CLOSED)));
     }
 
-    private NamespaceBundleFactory getNamespaceBundleFactory() {
-        PulsarService pulsar = mock(PulsarService.class);
-        LocalZooKeeperCacheService localZkCache = mock(LocalZooKeeperCacheService.class);
-        ZooKeeperDataCache<LocalPolicies> poilciesCache = mock(ZooKeeperDataCache.class);
-        when(pulsar.getLocalZkCacheService()).thenReturn(localZkCache);
-        when(localZkCache.policiesCache()).thenReturn(poilciesCache);
-        doNothing().when(poilciesCache).registerListener(any());
-        return NamespaceBundleFactory.createFactory(pulsar, Hashing.crc32());
-    }
-
     @Test
     public void testFindBundle() throws Exception {
         SortedSet<Long> partitions = Sets.newTreeSet();
@@ -142,7 +124,7 @@ public class NamespaceBundlesTest {
         partitions.add(0xb0000000l);
         partitions.add(0xc0000000l);
         partitions.add(0xffffffffl);
-        NamespaceBundles bundles = new NamespaceBundles(NamespaceName.get("pulsar/global/ns1"), partitions, factory);
+        NamespaceBundles bundles = new NamespaceBundles(new NamespaceName("pulsar/global/ns1"), partitions, factory);
         DestinationName dn = DestinationName.get("persistent://pulsar/global/ns1/topic-1");
         NamespaceBundle bundle = bundles.findBundle(dn);
         assertTrue(bundle.includes(dn));
@@ -175,7 +157,7 @@ public class NamespaceBundlesTest {
 
     @Test
     public void testsplitBundles() throws Exception {
-        NamespaceName nsname = NamespaceName.get("pulsar/global/ns1");
+        NamespaceName nsname = new NamespaceName("pulsar/global/ns1");
         DestinationName dn = DestinationName.get("persistent://pulsar/global/ns1/topic-1");
         NamespaceBundles bundles = factory.getBundles(nsname);
         NamespaceBundle bundle = bundles.findBundle(dn);
@@ -190,7 +172,7 @@ public class NamespaceBundlesTest {
         assertEquals(totalExpectedSplitBundles, splitBundles.getLeft().getBundles().size());
 
         // (2) split in 4: first bundle from above split bundles
-        NamespaceBundleFactory utilityFactory = getNamespaceBundleFactory();
+        NamespaceBundleFactory utilityFactory = NamespaceBundleFactory.createFactory(Hashing.crc32());
         NamespaceBundles bundles2 = splitBundles.getLeft();
         NamespaceBundle testChildBundle = bundles2.getBundles().get(0);
 
@@ -219,7 +201,7 @@ public class NamespaceBundlesTest {
     @Test
     public void testSplitBundleInTwo() throws Exception {
         final int NO_BUNDLES = 2;
-        NamespaceName nsname = NamespaceName.get("pulsar/global/ns1");
+        NamespaceName nsname = new NamespaceName("pulsar/global/ns1");
         DestinationName dn = DestinationName.get("persistent://pulsar/global/ns1/topic-1");
         NamespaceBundles bundles = factory.getBundles(nsname);
         NamespaceBundle bundle = bundles.findBundle(dn);
@@ -230,7 +212,7 @@ public class NamespaceBundlesTest {
 
         // (2) split: [0x00000000,0x7fffffff] => [0x00000000_0x3fffffff,0x3fffffff_0x7fffffff],
         // [0x7fffffff,0xffffffff] => [0x7fffffff_0xbfffffff,0xbfffffff_0xffffffff]
-        NamespaceBundleFactory utilityFactory = getNamespaceBundleFactory();
+        NamespaceBundleFactory utilityFactory = NamespaceBundleFactory.createFactory(Hashing.crc32());
         assertBundles(utilityFactory, nsname, bundle, splitBundles, NO_BUNDLES);
 
         // (3) split: [0x00000000,0x3fffffff] => [0x00000000_0x1fffffff,0x1fffffff_0x3fffffff],

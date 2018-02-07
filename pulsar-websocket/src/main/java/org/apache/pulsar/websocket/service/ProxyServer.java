@@ -24,7 +24,6 @@ import java.net.MalformedURLException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -134,7 +133,7 @@ public class ProxyServer {
             RequestLogHandler requestLogHandler = new RequestLogHandler();
             Slf4jRequestLog requestLog = new Slf4jRequestLog();
             requestLog.setExtended(true);
-            requestLog.setLogTimeZone(TimeZone.getDefault().getID());
+            requestLog.setLogTimeZone("GMT");
             requestLog.setLogLatency(true);
             requestLogHandler.setRequestLog(requestLog);
             handlers.add(0, new ContextHandlerCollection());

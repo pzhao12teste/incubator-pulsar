@@ -23,8 +23,6 @@ groups:
   docs:
   - title: Run Pulsar locally
     endpoint: LocalCluster
-  - title: Pulsar in Docker
-    endpoint: docker
   - title: Client libraries
     endpoint: Clients
   - title: Concepts and architecture
@@ -33,100 +31,61 @@ groups:
 - title: Deployment
   dir: deployment
   docs:
-  - title: Deploy on Amazon Web Services
-    endpoint: aws-cluster
-  - title: Single cluster on bare metal
-    endpoint: cluster
-  - title: Multi-cluster instance on bare metal
-    endpoint: instance
+  - title: Deploying a Pulsar instance
+    endpoint: InstanceSetup
   - title: Pulsar on Kubernetes
     endpoint: Kubernetes
-  - title: Pulsar on Google Kubernetes Engine
-    endpoint: Kubernetes/#pulsar-on-google-kubernetes-engine
-  - title: Pulsar on AWS
-    endpoint: Kubernetes/#pulsar-on-amazon-web-services
-  - title: Pulsar on DC/OS
-    endpoint: dcos
-  - title: Monitoring
-    endpoint: Monitoring
 
-- title: Pulsar administration
-  dir: admin
-  docs:
-  - title: ZooKeeper and BookKeeper
-    endpoint: ZooKeeperBookKeeper
-  - title: Geo-replication
-    endpoint: GeoReplication
-  - title: Authentication and authorization
-    endpoint: Authz
-  - title: Dashboard
-    endpoint: Dashboard
-  - title: Pulsar statistics
-    endpoint: Stats
-  - title: Modular load manager
-    endpoint: ModularLoadManager
-  - title: Pulsar proxy
-    endpoint: Proxy
-
-- title: Client libraries
-  dir: clients
-  docs:
-  - title: Java client
-    endpoint: Java
-  - title: C++ client
-    endpoint: Cpp
-  - title: Python client
-    endpoint: Python
-  - title: WebSocket API
-    endpoint: WebSocket
-
-- title: Admin API
-  dir: admin-api
-  docs:
-  - title: Overview
-    endpoint: overview
-  - title: Clusters
-    endpoint: clusters
-  - title: Properties
-    endpoint: properties
-  - title: Brokers
-    endpoint: brokers
-  - title: Namespaces
-    endpoint: namespaces
-  - title: Permissions
-    endpoint: permissions
-  - title: Persistent topics
-    endpoint: persistent-topics
-  - title: Non-Persistent topics
-    endpoint: non-persistent-topics
-  - title: Partitioned topics
-    endpoint: partitioned-topics
-
-- title: Adaptors
-  dir: adaptors
-  docs:
-  - title: Apache Kafka client wrapper
-    endpoint: KafkaWrapper
-  - title: Spark Streaming
-    endpoint: PulsarSpark
-  - title: Apache Storm
-    endpoint: PulsarStorm
-
-- title: Advanced
-  dir: advanced
+- title: Concerns
+  dir: concerns
   docs:
   - title: Partitioned topics
     endpoint: PartitionedTopics
   - title: Retention and expiry
     endpoint: RetentionExpiry
-  - title: Encryption
-    endpoint: Encryption
+- title: Pulsar administration
+  dir: admin
+  docs:
+  - title: Pulsar admin interface
+    endpoint: AdminInterface
+  - title: Clusters and brokers
+    endpoint: ClustersBrokers
+  - title: Properties and namespaces
+    endpoint: PropertiesNamespaces
+  - title: ZooKeeper and BookKeeper
+    endpoint: ZooKeeperBookKeeper
+  - title: Dashboard
+    endpoint: Dashboard
+  - title: Authentication and authorization
+    endpoint: Authz
+  - title: Geo-replication
+    endpoint: GeoReplication
+  - title: Pulsar statistics
+    endpoint: Stats
+  - title: Modular load manager
+    endpoint: ModularLoadManager
+    
+- title: Pulsar applications
+  dir: applications
+  docs:
+  - title: The Pulsar Java client
+    endpoint: JavaClient
+  - title: The Pulsar C++ client
+    endpoint: CppClient
+  - title: The Pulsar Python client
+    endpoint: PythonClient
+  - title: WebSocket API
+    endpoint: WebSocket
+  - title: Spark Streaming receiver
+    endpoint: PulsarSpark
+  - title: Apache Storm adaptor
+    endpoint: PulsarStorm
+  - title: Simulation tools
+    endpoint: SimulationTools
 
 - title: Developing Pulsar
   dir: project
   docs:
-  - title: Simulation tools
-    endpoint: SimulationTools
   - title: Pulsar binary protocol
     endpoint: BinaryProtocol
   - title: Codebase

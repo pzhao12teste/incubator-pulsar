@@ -21,6 +21,27 @@
  * http://bookkeeper.apache.org
  */
 
+/*
+ * Copyright 2011-2015 The Apache Software Foundation
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
 package org.apache.pulsar.zookeeper;
 
 import static org.apache.commons.io.FileUtils.cleanDirectory;
@@ -33,16 +54,19 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.bookkeeper.bookie.BookieException.InvalidCookieException;
+import org.apache.bokkeeper.stats.datasketches.DataSketchesMetricsProvider;
 import org.apache.bookkeeper.bookie.storage.ldb.DbLedgerStorage;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.proto.BookieServer;
 import org.apache.bookkeeper.stats.NullStatsLogger;
+import org.apache.bookkeeper.stats.StatsLogger;
+import org.apache.bookkeeper.stats.StatsProvider;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -91,6 +115,7 @@ public class LocalBookkeeperEnsemble {
     String bkDataDirName;
     BookieServer bs[];
     ServerConfiguration bsConfs[];
+    StatsProvider statsProviders[];
     Integer initialPort = 5000;
 
     /**
@@ -155,6 +180,7 @@ public class LocalBookkeeperEnsemble {
 
         bs = new BookieServer[numberOfBookies];
         bsConfs = new ServerConfiguration[numberOfBookies];
+        statsProviders = new StatsProvider[numberOfBookies];
 
         for (int i = 0; i < numberOfBookies; i++) {
 
@@ -175,22 +201,16 @@ public class LocalBookkeeperEnsemble {
             bsConfs[i].setAllowLoopback(true);
             bsConfs[i].setGcWaitTime(60000);
 
-            try {
-                bs[i] = new BookieServer(bsConfs[i], NullStatsLogger.INSTANCE);
-            } catch (InvalidCookieException e) {
-                // InvalidCookieException can happen if the machine IP has changed
-                // Since we are running here a local bookie that is always accessed
-                // from localhost, we can ignore the error
-                for (String path : zkc.getChildren("/ledgers/cookies", false)) {
-                    zkc.delete("/ledgers/cookies/" + path, -1);
-                }
+            String statsFilePath = FileSystems.getDefault()
+                    .getPath(bkDataDir.getAbsolutePath(), "bookie-stats.json").toString();
 
-                // Also clean the on-disk cookie
-                new File(new File(bkDataDir, "current"), "VERSION").delete();
+            // Initialize Stats Provider
+            statsProviders[i] = new DataSketchesMetricsProvider();
+            bsConfs[i].setProperty("dataSketchesMetricsJsonFileReporter", statsFilePath);
+            statsProviders[i].start(bsConfs[i]);
 
-                // Retry to start the bookie after cleaning the old left cookie
-                bs[i] = new BookieServer(bsConfs[i], NullStatsLogger.INSTANCE);
-            }
+            StatsLogger statsLogger = statsProviders[i].getStatsLogger("");
+            bs[i] = new BookieServer(bsConfs[i], statsLogger);
             bs[i].start();
             LOG.debug("Local BK[{}] started (port: {}, data_directory: {})", i, initialPort + i,
                     bkDataDir.getAbsolutePath());
@@ -201,30 +221,12 @@ public class LocalBookkeeperEnsemble {
         LOG.debug("Local ZK/BK starting ...");
         ServerConfiguration conf = new ServerConfiguration();
         conf.setLedgerManagerFactoryClassName("org.apache.bookkeeper.meta.HierarchicalLedgerManagerFactory");
-        // Use minimal configuration requiring less memory for unit tests
         conf.setLedgerStorageClass(DbLedgerStorage.class.getName());
-        conf.setProperty("dbStorage_writeCacheMaxSizeMb", 2);
-        conf.setProperty("dbStorage_readAheadCacheMaxSizeMb", 1);
-        conf.setProperty("dbStorage_rocksDB_writeBufferSizeMB", 1);
-        conf.setProperty("dbStorage_rocksDB_blockCacheSize", 1024 * 1024);
-        conf.setFlushInterval(60000);
-        conf.setProperty("journalMaxGroupWaitMSec", 0L);
-
-        runZookeeper(1000);
-        initializeZookeper();
-        runBookies(conf);
-    }
-
-    public void startStandalone() throws Exception {
-        LOG.debug("Local ZK/BK starting ...");
-        ServerConfiguration conf = new ServerConfiguration();
-        conf.setLedgerManagerFactoryClassName("org.apache.bookkeeper.meta.HierarchicalLedgerManagerFactory");
-        conf.setLedgerStorageClass(DbLedgerStorage.class.getName());
+        conf.setProperty("dbStorage_rocksDBEnabled", true);
         conf.setProperty("dbStorage_writeCacheMaxSizeMb", 256);
         conf.setProperty("dbStorage_readAheadCacheMaxSizeMb", 64);
         conf.setFlushInterval(60000);
         conf.setProperty("journalMaxGroupWaitMSec", 1L);
-        conf.setAdvertisedAddress("127.0.0.1");
 
         runZookeeper(1000);
         initializeZookeper();
@@ -235,6 +237,10 @@ public class LocalBookkeeperEnsemble {
         LOG.debug("Local ZK/BK stopping ...");
         for (BookieServer bookie : bs) {
             bookie.shutdown();
+        }
+
+        for (StatsProvider statsProvider : statsProviders) {
+            statsProvider.stop();
         }
 
         zkc.close();

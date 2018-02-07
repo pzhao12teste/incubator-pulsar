@@ -24,50 +24,52 @@ DECLARE_LOG_OBJECT()
 
 namespace pulsar {
 
-ConnectionPool::ConnectionPool(const ClientConfiguration& conf, ExecutorServiceProviderPtr executorProvider,
+ConnectionPool::ConnectionPool(const ClientConfiguration& conf,
+                               ExecutorServiceProviderPtr executorProvider,
                                const AuthenticationPtr& authentication, bool poolConnections)
-    : clientConfiguration_(conf),
-      executorProvider_(executorProvider),
-      authentication_(authentication),
-      pool_(),
-      poolConnections_(poolConnections),
-      mutex_() {}
+        : clientConfiguration_(conf),
+          executorProvider_(executorProvider),
+          authentication_(authentication),
+          pool_(),
+          poolConnections_(poolConnections),
+          mutex_() {
+}
 
 Future<Result, ClientConnectionWeakPtr> ConnectionPool::getConnectionAsync(
-    const std::string& logicalAddress, const std::string& physicalAddress) {
+        const std::string& endpoint) {
     boost::unique_lock<boost::mutex> lock(mutex_);
 
     if (poolConnections_) {
-        PoolMap::iterator cnxIt = pool_.find(logicalAddress);
+        PoolMap::iterator cnxIt = pool_.find(endpoint);
         if (cnxIt != pool_.end()) {
             ClientConnectionPtr cnx = cnxIt->second.lock();
 
             if (cnx && !cnx->isClosed()) {
                 // Found a valid or pending connection in the pool
-                LOG_DEBUG("Got connection from pool for " << logicalAddress << " use_count: "  //
-                                                          << (cnx.use_count() - 1) << " @ " << cnx.get());
+                LOG_DEBUG("Got connection from pool for " << endpoint << " use_count: "  //
+                        << (cnx.use_count() - 1) << " @ " << cnx.get());
                 return cnx->getConnectFuture();
             } else {
                 // Deleting stale connection
-                LOG_INFO("Deleting stale connection from pool for "
-                         << logicalAddress << " use_count: " << (cnx.use_count() - 1) << " @ " << cnx.get());
-                pool_.erase(logicalAddress);
+                LOG_INFO("Deleting stale connection from pool for " << endpoint << " use_count: "
+                        << (cnx.use_count() - 1) << " @ " << cnx.get());
+                pool_.erase(endpoint);
             }
         }
     }
 
     // No valid or pending connection found in the pool, creating a new one
-    ClientConnectionPtr cnx(new ClientConnection(logicalAddress, physicalAddress, executorProvider_->get(),
-                                                 clientConfiguration_, authentication_));
+    ClientConnectionPtr cnx(new ClientConnection(endpoint, executorProvider_->get(), clientConfiguration_, authentication_));
 
-    LOG_INFO("Created connection for " << logicalAddress);
+    LOG_INFO("Created connection for " << endpoint);
 
     Future<Result, ClientConnectionWeakPtr> future = cnx->getConnectFuture();
-    pool_.insert(std::make_pair(logicalAddress, cnx));
+    pool_.insert(std::make_pair(endpoint, cnx));
 
     lock.unlock();
 
     cnx->tcpConnectAsync();
     return future;
 }
-}  // namespace pulsar
+
+}

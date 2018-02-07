@@ -5,27 +5,6 @@ tags:
 - architecture
 ---
 
-<!--
-
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-
--->
-
 {% popover Pulsar %} is a multi-tenant, high-performance solution for server-to-server messaging originally developed by [Yahoo](http://yahoo.github.io/) and now under the stewardship of the [Apache Software Foundation](https://www.apache.org/).
 
 Pulsar's key features include:
@@ -33,13 +12,13 @@ Pulsar's key features include:
 * Native support for multiple {% popover clusters %} in a Pulsar {% popover instance %}, with seamless [geo-replication](../../admin/GeoReplication) of messages across clusters
 * Very low publish and end-to-end latency
 * Seamless scalability out to over a million topics
-* A simple [client API](#client-api) with bindings for [Java](../../clients/Java), [Python](../../clients/Python), and [C++](../../clients/Cpp)
+* A simple [client API](#client-api) with bindings for [Java](../../applications/JavaClient), [Python](../../applications/PythonClient), and [C++](../../applications/CppClient)
 * Multiple [subscription modes](#subscription-modes) for {% popover topics %} ([exclusive](#exclusive), [shared](#shared), and [failover](#failover))
 * Guaranteed message delivery with [persistent message storage](#persistent-storage) provided by [Apache BookKeeper](http://bookkeeper.apache.org/)
 
 ## Producers, consumers, topics, and subscriptions
 
-Pulsar is built on the [publish-subscribe](https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern) pattern, aka {% popover pub-sub %}. In this pattern, [producers](#producers) publish messages to [topics](#topics). [Consumers](#consumers) can then [subscribe](#subscription-modes) to those topics, process incoming messages, and send an {% popover acknowledgement %} when processing is complete.
+Pulsar is built on the [publish-subscribe](https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern) pattern, aka {% popover pub-sub %}. In this pattern, [producers](#producers) publish messages to [topics](#topics). [Consumers](#consumers) can then [subscribe](#subscription-modes) to those topics and process incoming messages.
 
 Once a {% popover subscription %} has been created, all messages will be [retained](#persistent-storage) by Pulsar, even if the consumer gets disconnected. Retained messages will be discarded only when a consumer {% popover acknowledges %} that they've been successfully processed.
 
@@ -90,7 +69,7 @@ Messages can be acknowledged either one by one or cumulatively. With cumulative 
 
 #### Listeners
 
-Client libraries can provide their own listener implementations for consumers. The [Java client](../../clients/Java), for example, provides a {% javadoc MesssageListener client org.apache.pulsar.client.api.MessageListener %} interface. In this interface, the `received` method is called whenever a new message is received.
+Client libraries can provide their own listener implementations for consumers. The [Java client](../../applications/JavaClient), for example, provides a {% javadoc MesssageListener client org.apache.pulsar.client.api.MessageListener %} interface. In this interface, the `received` method is called whenever a new message is received.
 
 ### Topics
 
@@ -100,27 +79,17 @@ As in other pub-sub systems, topics in Pulsar are named channels for transmittin
 
 | Topic name component | Description                                                                                                                                                                                                                                  |
 |:---------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `persistent`         | It identifies type of topic. Pulsar supports two kind of topics: persistent and non-persistent. In persistent topic, all messages are durably [persisted](#persistent-storage) on disk (that means on multiple disks unless the {% popover broker %} is {% popover standalone %}), whereas [non-persistent](#non-persistent-topics) topic does not persist message into storage disk. |
+| `persistent`         | Identifies a topic for which all messages are durably [persisted](#persistent-storage) on disk (that means on multiple disks unless the {% popover broker %} is {% popover standalone %}). Pulsar currently only supports persistent topics. |
 | `property`           | The topic's {% popover tenant %} within the instance. Tenants are essential to {% popover multi-tenancy %} in Pulsar and can be spread across clusters.                                                                                      |
 | `cluster`            | Where the topic is located. Typically there will be one {% popover cluster %} for each geographical region or data center.                                                                                                                   |
-| `namespace`          | The administrative unit of the topic, which acts as a grouping mechanism for related topics. Most topic configuration is performed at the [namespace](#namespace) level. Each property (tenant) can have multiple namespaces.                              |
+| `namespace`          | The administrative unit of the topic, which acts as a grouping mechanism for related topics. Most topic configuration is performed at the namespace level. Each property (tenant) can have multiple namespaces.                              |
 | `topic`              | The final part of the name. Topic names are freeform and have no special meaning in a Pulsar instance.                                                                                                                                       |
-
-{% include admonition.html type="success" title="No need to explicitly create new topics"
-content="Application does not explicitly create the topic but attempting to write or receive message on a topic that does not yet exist, Pulsar will automatically create that topic under the [namespace](#namespace)." %}
-
-### Namespace
-
-A namespace is a logical nomenclature within a property. A property can create multiple namespaces via [admin API](../../admin-api/namespaces#create). For instance, a property with different applications can create a separate namespace for each application. A namespace allows the application to create and manage a hierarchy of topics. 
-For e.g.  `my-property/my-cluster/my-property-app1` is a namespace for the application  `my-property-app1` in cluster `my-cluster` for `my-property`. 
-Application can create any number of [topics](#topics) under the namespace.
-
 
 ### Subscription modes
 
 A subscription is a named configuration rule that determines how messages are delivered to {% popover consumers %}. There are three available subscription modes in Pulsar: [exclusive](#exclusive), [shared](#shared), and [failover](#failover). These modes are illustrated in the figure below.
 
-![Subscription Modes](/img/pulsar_subscriptions.jpg)
+![Subscription Modes]({{ site.baseurl }}img/pulsar_subscriptions.jpg)
 
 #### Exclusive
 
@@ -150,10 +119,6 @@ In the diagram above, Consumer-C-1 is the master consumer while Consumer-C-2 wou
 
 {% include explanations/partitioned-topics.md %}
 
-### Non-persistent topics
-
-{% include explanations/non-persistent-topics.md %}
-
 ## Architecture overview
 
 At the highest level, a Pulsar {% popover instance %} is composed of one or more Pulsar {% popover clusters %}. Clusters within an instance can [replicate](#replicate) data amongst themselves.
@@ -166,7 +131,7 @@ In a Pulsar cluster:
 
 The diagram below provides an illustration of a Pulsar cluster:
 
-![Architecture Diagram](/img/pulsar_system_architecture.png)
+![Architecture Diagram]({{ site.baseurl }}img/pulsar_system_architecture.png)
 
 At the broader {% popover instance %} level, an instance-wide ZooKeeper cluster called {% popover global ZooKeeper %} handles coordination tasks involving multiple clusters, for example [geo-replication](#replication).
 
@@ -179,7 +144,7 @@ The Pulsar message {% popover broker %} is a stateless component that's primaril
 
 Messages are typically dispatched out of a [managed ledger](#managed-ledger) cache for the sake of performance, *unless* the backlog exceeds the cache size. If the backlog grows too large for the cache, the broker will start reading entries from {% popover BookKeeper %}.
 
-Finally, to support {% popover geo-replication %} on global topics, the broker manages replicators that tail the entries published in the local region and republish them to the remote region using the Pulsar [Java client library](../../clients/Java).
+Finally, to support {% popover geo-replication %} on global topics, the broker manages replicators that tail the entries published in the local region and republish them to the remote region using the Pulsar [Java client library](../../applications/JavaClient).
 
 {% include admonition.html type="info" content="For a guide to managing Pulsar brokers, see the [Clusters and brokers](../../admin/ClustersBrokers#managing-brokers) guide." %}
 
@@ -195,14 +160,6 @@ Clusters can replicate amongst themselves using [geo-replication](#geo-replicati
 
 {% include admonition.html type="info" content="For a guide to managing Pulsar clusters, see the [Clusters and brokers](../../admin/ClustersBrokers#managing-clusters) guide." %}
 
-### Global cluster
-
-In any Pulsar {% popover instance %}, there is an instance-wide cluster called `global` that you can use to mange non-cluster-specific namespaces and topics. The `global` cluster is created for you automatically when you [initialize metadata](../../admin/ClustersBrokers#initialize-cluster-metadata) for the first cluster in your instance.
-
-Global topic names have this basic structure (note the `global` cluster):
-
-{% include topic.html p="my-property" c="global" n="my-namespace" t="my-topic" %}
-
 ## Metadata store
 
 Pulsar uses [Apache Zookeeper](https://zookeeper.apache.org/) for metadata storage, cluster configuration, and coordination. In a Pulsar instance:
@@ -210,11 +167,9 @@ Pulsar uses [Apache Zookeeper](https://zookeeper.apache.org/) for metadata stora
 * A {% popover global ZooKeeper %} quorum stores configuration for {% popover properties %}, {% popover namespaces %}, and other entities that need to be globally consistent.
 * Each cluster has its own local ZooKeeper ensemble that stores {% popover cluster %}-specific configuration and coordination such as ownership metadata, broker load reports, BookKeeper {% popover ledger %} metadata, and more.
 
-When creating a [new cluster](../../admin/ClustersBrokers#initialize-cluster-metadata)
-
 ## Persistent storage
 
-![Brokers and bookies](/img/broker-bookie.png)
+![Brokers and bookies]({{ site.baseurl }}img/broker-bookie.png)
 
 Pulsar provides guaranteed message delivery for applications. If a message successfully reaches a Pulsar {% popover broker %}, it will be delivered to its intended target.
 
@@ -286,11 +241,11 @@ As you can see, the property is the most basic unit of categorization for topics
 
 ## Authentication and Authorization
 
-Pulsar supports a pluggable [authentication](../../admin/Authz) mechanism which can be configured at broker and it also supports authorization to identify client and its access rights on topics and properties.
+Pulsar supports a pluggable [authentication](https://github.com/apache/incubator-pulsar/blob/master/docs/Authentication.md) mechanism which can be configured at broker and it also supports [authorization](https://github.com/apache/incubator-pulsar/blob/master/docs/Authorization.md) to identify client and its access rights on topics and properties.
 
 ## Client interface
 
-Pulsar exposes a client API with language bindings for [Java](../../clients/Java) and [C++](../../clients/Cpp). The client API optimizes and encapsulates Pulsar's client-broker communication protocol and exposes a simple and intuitive API for use by applications.
+Pulsar exposes a client API with language bindings for [Java](../../applications/JavaClient) and [C++](../../applications/CppClient). The client API optimizes and encapsulates Pulsar's client-broker communication protocol and exposes a simple and intuitive API for use by applications.
 
 Under the hood, the current official Pulsar client libraries support transparent reconnection and/or connection failover to {% popover brokers %}, queuing of messages until {% popover acknowledged %} by the broker, and heuristics such as connection retries with backoff.
 
@@ -307,85 +262,8 @@ When an application wants to create a producer/consumer, the Pulsar client libra
 
 Whenever the TCP connection breaks, the client will immediately re-initiate this setup phase and will keep trying with exponential backoff to re-establish the producer or consumer until the operation succeeds.
 
-## Pulsar proxy
-
-One way for Pulsar clients to interact with a Pulsar [cluster](#clusters) is by connecting to Pulsar message [brokers](#brokers) directly. In some cases, however, this kind of direct connection is either infeasible or undesirable because the client doesn't have direct access to broker addresses. If you're running Pulsar in a cloud environment or on [Kubernetes](https://kubernetes.io) or an analogous platform, for example, then direct client connections to brokers are likely not possible.
-
-The **Pulsar proxy** provides a solution to this problem by acting as a single gateway for all of the brokers in a cluster. If you run the Pulsar proxy (which, again, is optional), all client connections with the Pulsar {% popover cluster %} will flow through the proxy rather than communicating with brokers.
-
-{% include admonition.html type="success" content="For the sake of performance and fault tolerance, you can run as many instances of the Pulsar proxy as you'd like." %}
-
-Architecturally, the Pulsar proxy gets all the information it requires from ZooKeeper. When starting the proxy on a machine, you only need to provide ZooKeeper connection strings for the cluster-specific and {% popover global ZooKeeper %} clusters. Here's an example:
-
-```bash
-$ bin/pulsar proxy \
-  --zookeeper-servers zk-0,zk-1,zk-2 \
-  --global-zookeeper-servers zk-0,zk-1,zk-2
-```
-
-{% include admonition.html type="info" title="Pulsar proxy docs" content='
-For documentation on using the Pulsar proxy, see the [Pulsar proxy admin documentation](../../admin/Proxy).
-' %}
-
-Some important things to know about the Pulsar proxy:
-
-* Connecting clients don't need to provide *any* specific configuration to use the Pulsar proxy. You won't need to update the client configuration for existing applications beyond updating the IP used for the service URL (for example if you're running a load balancer over the Pulsar proxy).
-* [TLS encryption and authentication](../../admin/Authz/#tls-client-auth) is supported by the Pulsar proxy
-
 ## Service discovery
 
 [Clients](../../getting-started/Clients) connecting to Pulsar {% popover brokers %} need to be able to communicate with an entire Pulsar {% popover instance %} using a single URL. Pulsar provides a built-in service discovery mechanism that you can set up using the instructions in the [Deploying a Pulsar instance](../../deployment/InstanceSetup#service-discovery-setup) guide.
 
 You can use your own service discovery system if you'd like. If you use your own system, there is just one requirement: when a client performs an HTTP request to an endpoint, such as `http://pulsar.us-west.example.com:8080`, the client needs to be redirected to *some* active broker in the desired {% popover cluster %}, whether via DNS, an HTTP or IP redirect, or some other means.
-
-## Reader interface
-
-In Pulsar, the "standard" [consumer interface](#consumers) involves using {% popover consumers %} to listen on {% popover topics %}, process incoming messages, and finally {% popover acknowledge %} those messages when they've been processed. Whenever a consumer connects to a topic, it automatically begins reading from the earliest un-acked message onward because the topic's cursor is automatically managed by Pulsar.
-
-The **reader interface** for Pulsar enables applications to manually manage cursors. When you use a reader to connect to a topic---rather than a consumer---you need to specify *which* message the reader begins reading from when it connects to a topic. When connecting to a topic, the reader interface enables you to begin with:
-
-* The **earliest** available message in the topic
-* The **latest** available message in the topic
-* Some other message between the earliest and the latest. If you select this option, you'll need to explicitly provide a message ID. Your application will be responsible for "knowing" this message ID in advance, perhaps fetching it from a persistent data store or cache.
-
-The reader interface is helpful for use cases like using Pulsar to provide [effectively-once](https://streaml.io/blog/exactly-once/) processing semantics for a stream processing system. For this use case, it's essential that the stream processing system be able to "rewind" topics to a specific message and begin reading there. The reader interface provides Pulsar clients with the low-level abstraction necessary to "manually position" themselves within a topic.
-
-<img src="/img/pulsar-reader-consumer-interfaces.png" alt="The Pulsar consumer and reader interfaces" width="80%">
-
-{% include admonition.html type="warning" title="Non-partitioned topics only"
-content="The reader interface for Pulsar cannot currently be used with [partitioned topics](#partitioned-topics)." %}
-
-Here's a Java example that begins reading from the earliest available message on a topic:
-
-```java
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.Reader;
-
-String topic = "persistent://sample/standalone/ns1/reader-api-test";
-MessageId id = MessageId.earliest;
-
-// Create a reader on a topic and for a specific message (and onward)
-Reader reader = pulsarClient.createReader(topic, id, new ReaderConfiguration());
-
-while (true) {
-    Message message = reader.readNext();
-
-    // Process the message
-}
-```
-
-To create a reader that will read from the latest available message:
-
-```java
-MessageId id = MessageId.latest;
-Reader reader = pulsarClient.createReader(topic, id, new ReaderConfiguration());
-```
-
-To create a reader that will read from some message between earliest and latest:
-
-```java
-byte[] msgIdBytes = // Some byte array
-MessageId id = MessageId.fromByteArray(msgIdBytes);
-Reader reader = pulsarClient.createReader(topic, id, new ReaderConfiguration());
-```

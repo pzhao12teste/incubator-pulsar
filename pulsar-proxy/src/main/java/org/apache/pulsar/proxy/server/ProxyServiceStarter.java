@@ -88,13 +88,8 @@ public class ProxyServiceStarter {
             config.setGlobalZookeeperServers(globalZookeeperServers);
         }
 
-        if ((isBlank(config.getBrokerServiceURL()) && isBlank(config.getBrokerServiceURLTLS()))
-                || config.isAuthorizationEnabled()) {
-            checkArgument(!isEmpty(config.getZookeeperServers()), "zookeeperServers must be provided");
-            checkArgument(!isEmpty(config.getGlobalZookeeperServers()), "globalZookeeperServers must be provided");
-        }
-
-        java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+        checkArgument(!isEmpty(config.getZookeeperServers()), "zookeeperServers must be provided");
+        checkArgument(!isEmpty(config.getGlobalZookeeperServers()), "globalZookeeperServers must be provided");
 
         // create broker service
         ProxyService discoveryService = new ProxyService(config);

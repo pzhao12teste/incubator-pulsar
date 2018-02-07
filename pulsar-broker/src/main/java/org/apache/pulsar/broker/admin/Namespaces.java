@@ -18,20 +18,15 @@
  */
 package org.apache.pulsar.broker.admin;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.commons.lang3.StringUtils.isBlank;
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES_ROOT;
 import static org.apache.pulsar.broker.cache.LocalZooKeeperCacheService.LOCAL_POLICIES_ROOT;
 
 import java.net.URI;
 import java.net.URL;
-import java.util.LinkedHashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -54,11 +49,9 @@ import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriBuilder;
 
 import org.apache.pulsar.broker.PulsarServerException;
-import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.service.BrokerServiceException.SubscriptionBusyException;
-import org.apache.pulsar.broker.service.Subscription;
-import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentReplicator;
+import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
 import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.broker.web.RestException;
 import org.apache.pulsar.client.admin.PulsarAdminException;
@@ -71,14 +64,12 @@ import org.apache.pulsar.common.naming.NamespaceBundles;
 import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.policies.data.AuthAction;
 import org.apache.pulsar.common.policies.data.BacklogQuota;
-import org.apache.pulsar.common.policies.data.BacklogQuota.BacklogQuotaType;
 import org.apache.pulsar.common.policies.data.BundlesData;
 import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.policies.data.DispatchRate;
 import org.apache.pulsar.common.policies.data.PersistencePolicies;
 import org.apache.pulsar.common.policies.data.Policies;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
-import org.apache.pulsar.common.policies.data.SubscriptionAuthMode;
+import org.apache.pulsar.common.policies.data.BacklogQuota.BacklogQuotaType;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.data.Stat;
@@ -86,8 +77,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-import com.google.common.collect.Sets.SetView;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -138,7 +127,7 @@ public class Namespaces extends AdminResource {
         }
 
         try {
-            for (String namespace : globalZk().getChildren(path(POLICIES, property, cluster), false)) {
+            for (String namespace : globalZk().getChildren(path("policies", property, cluster), false)) {
                 namespaces.add(String.format("%s/%s/%s", property, cluster, namespace));
             }
         } catch (KeeperException.NoNodeException e) {
@@ -205,7 +194,7 @@ public class Namespaces extends AdminResource {
             throw new RestException(Status.NOT_FOUND, "Cluster does not exist");
         }
         try {
-            checkNotNull(propertiesCache().get(path(POLICIES, property)));
+            checkNotNull(propertiesCache().get(path("policies", property)));
         } catch (NoNodeException nne) {
             log.warn("[{}] Failed to create namespace. Property {} does not exist", clientAppId(), property);
             throw new RestException(Status.NOT_FOUND, "Property does not exist");
@@ -216,7 +205,7 @@ public class Namespaces extends AdminResource {
         }
         try {
             NamedEntity.checkName(namespace);
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             Policies policies = new Policies();
             if (initialBundles != null && initialBundles.getNumBundles() > 0) {
                 if (initialBundles.getBoundaries() == null || initialBundles.getBoundaries().size() == 0) {
@@ -224,12 +213,9 @@ public class Namespaces extends AdminResource {
                 } else {
                     policies.bundles = validateBundlesData(initialBundles);
                 }
-            } else {
-                int defaultNumberOfBundles = config().getDefaultNumberOfNamespaceBundles();
-                policies.bundles = getBundles(defaultNumberOfBundles);
             }
 
-            zkCreateOptimistic(path(POLICIES, property, cluster, namespace),
+            zkCreateOptimistic(path("policies", property, cluster, namespace),
                     jsonMapper().writeValueAsBytes(policies));
             log.info("[{}] Created namespace {}/{}/{}", clientAppId(), property, cluster, namespace);
         } catch (KeeperException.NodeExistsException e) {
@@ -255,7 +241,7 @@ public class Namespaces extends AdminResource {
             @PathParam("namespace") String namespace,
             @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
 
         validateAdminAccessOnProperty(property);
         validatePoliciesReadOnlyAccess();
@@ -268,7 +254,7 @@ public class Namespaces extends AdminResource {
 
         // ensure the local cluster is the only cluster for the global namespace configuration
         try {
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
+            policiesNode = policiesCache().getWithStat(path("policies", property, cluster, namespace))
                     .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist."));
 
             policies = policiesNode.getKey();
@@ -315,9 +301,9 @@ public class Namespaces extends AdminResource {
         // set the policies to deleted so that somebody else cannot acquire this namespace
         try {
             policies.deleted = true;
-            globalZk().setData(path(POLICIES, property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
+            globalZk().setData(path("policies", property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
                     policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
         } catch (Exception e) {
             log.error("[{}] Failed to delete namespace on global ZK {}/{}/{}", clientAppId(), property, cluster,
                     namespace, e);
@@ -336,7 +322,7 @@ public class Namespaces extends AdminResource {
             }
 
             // we have successfully removed all the ownership for the namespace, the policies znode can be deleted now
-            final String globalZkPolicyPath = path(POLICIES, property, cluster, namespace);
+            final String globalZkPolicyPath = path("policies", property, cluster, namespace);
             final String lcaolZkPolicyPath = joinPath(LOCAL_POLICIES_ROOT, property, cluster, namespace);
             globalZk().delete(globalZkPolicyPath, -1);
             localZk().delete(lcaolZkPolicyPath, -1);
@@ -361,14 +347,13 @@ public class Namespaces extends AdminResource {
     public void deleteNamespaceBundle(@PathParam("property") String property, @PathParam("cluster") String cluster,
             @PathParam("namespace") String namespace, @PathParam("bundle") String bundleRange,
             @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
 
         validateAdminAccessOnProperty(property);
         validatePoliciesReadOnlyAccess();
 
         // ensure that non-global namespace is directed to the correct cluster
         validateClusterOwnership(cluster);
-
         Policies policies = getNamespacePolicies(property, cluster, namespace);
         // ensure the local cluster is the only cluster for the global namespace configuration
         try {
@@ -455,15 +440,15 @@ public class Namespaces extends AdminResource {
 
         try {
             Stat nodeStat = new Stat();
-            byte[] content = globalZk().getData(path(POLICIES, property, cluster, namespace), null, nodeStat);
+            byte[] content = globalZk().getData(path("policies", property, cluster, namespace), null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.auth_policies.namespace_auth.put(role, actions);
 
             // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
+            globalZk().setData(path("policies", property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
                     nodeStat.getVersion());
 
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
 
             log.info("[{}] Successfully granted access for role {}: {} - namespace {}/{}/{}", clientAppId(), role,
                     actions, property, cluster, namespace);
@@ -495,15 +480,15 @@ public class Namespaces extends AdminResource {
 
         try {
             Stat nodeStat = new Stat();
-            byte[] content = globalZk().getData(path(POLICIES, property, cluster, namespace), null, nodeStat);
+            byte[] content = globalZk().getData(path("policies", property, cluster, namespace), null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.auth_policies.namespace_auth.remove(role);
 
             // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
+            globalZk().setData(path("policies", property, cluster, namespace), jsonMapper().writeValueAsBytes(policies),
                     nodeStat.getVersion());
 
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             log.info("[{}] Successfully revoked access for role {} - namespace {}/{}/{}", clientAppId(), role, property,
                     cluster, namespace);
         } catch (KeeperException.NoNodeException e) {
@@ -545,48 +530,45 @@ public class Namespaces extends AdminResource {
     @ApiOperation(value = "Set the replication clusters for a namespace.")
     @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
             @ApiResponse(code = 404, message = "Property or cluster or namespace doesn't exist"),
-            @ApiResponse(code = 409, message = "Peer-cluster can't be part of replication-cluster"),
             @ApiResponse(code = 412, message = "Namespace is not global or invalid cluster ids") })
     public void setNamespaceReplicationClusters(@PathParam("property") String property,
             @PathParam("cluster") String cluster, @PathParam("namespace") String namespace, List<String> clusterIds) {
         validateAdminAccessOnProperty(property);
         validatePoliciesReadOnlyAccess();
 
-        Set<String> replicationClusterSet = Sets.newHashSet(clusterIds);
         if (!cluster.equals("global")) {
             throw new RestException(Status.PRECONDITION_FAILED, "Cannot set replication on a non-global namespace");
         }
 
-        if (replicationClusterSet.contains("global")) {
+        if (clusterIds.contains("global")) {
             throw new RestException(Status.PRECONDITION_FAILED,
                     "Cannot specify global in the list of replication clusters");
         }
 
         Set<String> clusters = clusters();
-        for (String clusterId : replicationClusterSet) {
+        for (String clusterId : clusterIds) {
             if (!clusters.contains(clusterId)) {
                 throw new RestException(Status.FORBIDDEN, "Invalid cluster id: " + clusterId);
             }
-            validatePeerClusterConflict(clusterId, replicationClusterSet);
         }
 
-        for (String clusterId : replicationClusterSet) {
+        for (String clusterId : clusterIds) {
             validateClusterForProperty(property, clusterId);
         }
 
         Entry<Policies, Stat> policiesNode = null;
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
 
         try {
             // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
+            policiesNode = policiesCache().getWithStat(path("policies", property, cluster, namespace))
                     .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
             policiesNode.getKey().replication_clusters = clusterIds;
 
             // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace),
+            globalZk().setData(path("policies", property, cluster, namespace),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
 
             log.info("[{}] Successfully updated the replication clusters on namespace {}/{}/{}", clientAppId(),
                     property, cluster, namespace);
@@ -636,19 +618,19 @@ public class Namespaces extends AdminResource {
             throw new RestException(Status.PRECONDITION_FAILED, "Invalid value for message TTL");
         }
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         Entry<Policies, Stat> policiesNode = null;
 
         try {
             // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
+            policiesNode = policiesCache().getWithStat(path("policies", property, cluster, namespace))
                     .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
             policiesNode.getKey().message_ttl_in_seconds = messageTTL;
 
             // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace),
+            globalZk().setData(path("policies", property, cluster, namespace),
                     jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
 
             log.info("[{}] Successfully updated the message TTL on namespace {}/{}/{}", clientAppId(), property,
                     cluster, namespace);
@@ -665,182 +647,6 @@ public class Namespaces extends AdminResource {
         } catch (Exception e) {
             log.error("[{}] Failed to update the message TTL on namespace {}/{}/{}", clientAppId(), property, cluster,
                     namespace, e);
-            throw new RestException(e);
-        }
-    }
-
-    @POST
-    @Path("/{property}/{cluster}/{namespace}/antiAffinity")
-    @ApiOperation(value = "Set anti-affinity group for a namespace")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Property or cluster or namespace doesn't exist"),
-            @ApiResponse(code = 412, message = "Invalid antiAffinityGroup") })
-    public void setNamespaceAntiAffinityGroup(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace, String antiAffinityGroup) {
-        validateAdminAccessOnProperty(property);
-        validatePoliciesReadOnlyAccess();
-        
-        log.info("[{}] Setting anti-affinity group {} for {}/{}/{}", clientAppId(), antiAffinityGroup, property,
-                cluster, namespace);
-
-        if (isBlank(antiAffinityGroup)) {
-            throw new RestException(Status.PRECONDITION_FAILED, "antiAffinityGroup can't be empty");
-        }
-
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
-        Entry<Policies, Stat> policiesNode = null;
-
-        try {
-            // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
-                    .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
-            policiesNode.getKey().antiAffinityGroup = antiAffinityGroup;
-
-            // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace),
-                    jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
-
-            log.info("[{}] Successfully updated the antiAffinityGroup {} on namespace {}/{}/{}", clientAppId(),
-                    antiAffinityGroup, property, cluster, namespace);
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to update the antiAffinityGroup for namespace {}/{}/{}: does not exist", clientAppId(),
-                    property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn(
-                    "[{}] Failed to update the antiAffinityGroup on namespace {}/{}/{} expected policy node version={} : concurrent modification",
-                    clientAppId(), property, cluster, namespace, policiesNode.getValue().getVersion());
-
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (Exception e) {
-            log.error("[{}] Failed to update the antiAffinityGroup on namespace {}/{}/{}", clientAppId(), property, cluster,
-                    namespace, e);
-            throw new RestException(e);
-        }
-    }
-
-    @GET
-    @Path("/{property}/{cluster}/{namespace}/antiAffinity")
-    @ApiOperation(value = "Get anti-affinity group of a namespace.")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Property or cluster or namespace doesn't exist") })
-    public String getNamespaceAntiAffinityGroup(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace) {
-        validateAdminAccessOnProperty(property);
-        return getNamespacePolicies(property, cluster, namespace).antiAffinityGroup;
-    }
-
-    @GET
-    @Path("{cluster}/antiAffinity/{group}")
-    @ApiOperation(value = "Get all namespaces that are grouped by given anti-affinity group in a given cluster. api can be only accessed by admin of any of the existing property")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 412, message = "Cluster not exist/Anti-affinity group can't be empty.") })
-    public List<String> getAntiAffinityNamespaces(@PathParam("cluster") String cluster,
-            @PathParam("group") String antiAffinityGroup, @QueryParam("property") String property) {
-        validateAdminAccessOnProperty(property);
-
-        log.info("[{}]-{} Finding namespaces for {} in {}", clientAppId(), property, antiAffinityGroup, cluster);
-
-        if (isBlank(antiAffinityGroup)) {
-            throw new RestException(Status.PRECONDITION_FAILED, "anti-affinity group can't be empty.");
-        }
-        validateClusterExists(cluster);
-        List<String> namespaces = Lists.newArrayList();
-        try {
-            for (String prop : globalZk().getChildren(POLICIES_ROOT, false)) {
-                for (String namespace : globalZk().getChildren(path(POLICIES, prop, cluster), false)) {
-                    Optional<Policies> policies = policiesCache()
-                            .get(AdminResource.path(POLICIES, prop, cluster, namespace));
-                    if (policies.isPresent() && antiAffinityGroup.equalsIgnoreCase(policies.get().antiAffinityGroup)) {
-                        namespaces.add(String.format("%s/%s/%s", prop, cluster, namespace));
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to list of properties/namespace from global-zk", e);
-        }
-        return namespaces;
-    }
-    
-    @DELETE
-    @Path("/{property}/{cluster}/{namespace}/antiAffinity")
-    @ApiOperation(value = "Remove anti-affinity group of a namespace.")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Namespace does not exist"),
-            @ApiResponse(code = 409, message = "Concurrent modification") })
-    public void removeNamespaceAntiAffinityGroup(@PathParam("property") String property,
-            @PathParam("cluster") String cluster, @PathParam("namespace") String namespace) {
-        validateAdminAccessOnProperty(property);
-        validatePoliciesReadOnlyAccess();
-
-        log.info("[{}] Deleting anti-affinity group for {}/{}/{}", clientAppId(), property, cluster, namespace);
-        
-        try {
-            Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
-            byte[] content = globalZk().getData(path, null, nodeStat);
-            Policies policies = jsonMapper().readValue(content, Policies.class);
-            policies.antiAffinityGroup = null;
-            globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
-            log.info("[{}] Successfully removed anti-affinity group for a namespace={}/{}/{}", clientAppId(), property,
-                    cluster, namespace);
-
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to remove anti-affinity group for namespace {}/{}/{}: does not exist", clientAppId(),
-                    property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn("[{}] Failed to remove anti-affinity group for namespace {}/{}/{}: concurrent modification",
-                    clientAppId(), property, cluster, namespace);
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (Exception e) {
-            log.error("[{}] Failed to remove anti-affinity group for namespace {}/{}/{}", clientAppId(), property,
-                    cluster, namespace, e);
-            throw new RestException(e);
-        }
-    }
-
-    @POST
-    @Path("/{property}/{cluster}/{namespace}/deduplication")
-    @ApiOperation(value = "Enable or disable broker side deduplication for all topics in a namespace")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Property or cluster or namespace doesn't exist") })
-    public void modifyDeduplication(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace, boolean enableDeduplication) {
-        validateAdminAccessOnProperty(property);
-        validatePoliciesReadOnlyAccess();
-
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
-        Entry<Policies, Stat> policiesNode = null;
-
-        try {
-            // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
-                    .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
-            policiesNode.getKey().deduplicationEnabled = enableDeduplication;
-
-            // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace),
-                    jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
-
-            log.info("[{}] Successfully {} on namespace {}/{}/{}", clientAppId(),
-                    enableDeduplication ? "enabled" : "disabled", property, cluster, namespace);
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to modify deplication status for namespace {}/{}/{}: does not exist", clientAppId(),
-                    property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn(
-                    "[{}] Failed to modify deplication status on namespace {}/{}/{} expected policy node version={} : concurrent modification",
-                    clientAppId(), property, cluster, namespace, policiesNode.getValue().getVersion());
-
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (Exception e) {
-            log.error("[{}] Failed to modify deplication status on namespace {}/{}/{}", clientAppId(), property,
-                    cluster, namespace, e);
             throw new RestException(e);
         }
     }
@@ -921,13 +727,10 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
         Policies policies = getNamespacePolicies(property, cluster, namespace);
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
 
         List<String> boundaries = policies.bundles.getBoundaries();
         for (int i = 0; i < boundaries.size() - 1; i++) {
@@ -960,22 +763,13 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
-        NamespaceName fqnn = NamespaceName.get(property, cluster, namespace);
+        NamespaceName fqnn = new NamespaceName(property, cluster, namespace);
         validatePoliciesReadOnlyAccess();
-
-        if (!isBundleOwnedByAnyBroker(fqnn, policies.bundles, bundleRange)) {
-            log.info("[{}] Namespace bundle is not owned by any broker {}/{}/{}/{}", clientAppId(), property, cluster,
-                    namespace, bundleRange);
-            return;
-        }
-
         NamespaceBundle nsBundle = validateNamespaceBundleOwnership(fqnn, policies.bundles, bundleRange, authoritative,
                 true);
+
         try {
             pulsar().getNamespaceService().unloadNamespaceBundle(nsBundle);
             log.info("[{}] Successfully unloaded namespace bundle {}", clientAppId(), nsBundle.toString());
@@ -991,8 +785,7 @@ public class Namespaces extends AdminResource {
     @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission") })
     public void splitNamespaceBundle(@PathParam("property") String property, @PathParam("cluster") String cluster,
             @PathParam("namespace") String namespace, @PathParam("bundle") String bundleRange,
-            @QueryParam("authoritative") @DefaultValue("false") boolean authoritative,
-            @QueryParam("unload") @DefaultValue("false") boolean unload) {
+            @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
         log.info("[{}] Split namespace bundle {}/{}/{}/{}", clientAppId(), property, cluster, namespace, bundleRange);
 
         validateSuperUserAccess();
@@ -1001,88 +794,19 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
-        NamespaceName fqnn = NamespaceName.get(property, cluster, namespace);
+        NamespaceName fqnn = new NamespaceName(property, cluster, namespace);
         validatePoliciesReadOnlyAccess();
         NamespaceBundle nsBundle = validateNamespaceBundleOwnership(fqnn, policies.bundles, bundleRange, authoritative,
                 true);
 
         try {
-            pulsar().getNamespaceService().splitAndOwnBundle(nsBundle, unload).get();
+            pulsar().getNamespaceService().splitAndOwnBundle(nsBundle).get();
             log.info("[{}] Successfully split namespace bundle {}", clientAppId(), nsBundle.toString());
-        } catch (IllegalArgumentException e) {
-            log.error("[{}] Failed to split namespace bundle {}/{} due to {}", clientAppId(), fqnn.toString(),
-                    bundleRange, e.getMessage());
-            throw new RestException(Status.PRECONDITION_FAILED, "Split bundle failed due to invalid request");
         } catch (Exception e) {
             log.error("[{}] Failed to split namespace bundle {}/{}", clientAppId(), fqnn.toString(), bundleRange, e);
             throw new RestException(e);
-        }
-    }
-
-    @POST
-    @Path("/{property}/{cluster}/{namespace}/dispatchRate")
-    @ApiOperation(value = "Set dispatch-rate throttling for all topics of the namespace")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission") })
-    public void setDispatchRate(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace, DispatchRate dispatchRate) {
-        log.info("[{}] Set namespace dispatch-rate {}/{}/{}/{}", clientAppId(), property, cluster, namespace,
-                dispatchRate);
-        validateSuperUserAccess();
-
-        Entry<Policies, Stat> policiesNode = null;
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
-
-        try {
-            final String path = path(POLICIES, property, cluster, namespace);
-            // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path)
-                    .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
-            policiesNode.getKey().clusterDispatchRate.put(pulsar().getConfiguration().getClusterName(), dispatchRate);
-
-            // Write back the new policies into zookeeper
-            globalZk().setData(path, jsonMapper().writeValueAsBytes(policiesNode.getKey()),
-                    policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path);
-
-            log.info("[{}] Successfully updated the dispatchRate for cluster on namespace {}/{}/{}", clientAppId(),
-                    property, cluster, namespace);
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to update the dispatchRate for cluster on namespace {}/{}/{}: does not exist",
-                    clientAppId(), property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn(
-                    "[{}] Failed to update the dispatchRate for cluster on namespace {}/{}/{} expected policy node version={} : concurrent modification",
-                    clientAppId(), property, cluster, namespace, policiesNode.getValue().getVersion());
-
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (Exception e) {
-            log.error("[{}] Failed to update the dispatchRate for cluster on namespace {}/{}/{}", clientAppId(),
-                    property, cluster, namespace, e);
-            throw new RestException(e);
-        }
-    }
-
-    @GET
-    @Path("/{property}/{cluster}/{namespace}/dispatchRate")
-    @ApiOperation(value = "Get dispatch-rate configured for the namespace, -1 represents not configured yet")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Namespace does not exist") })
-    public DispatchRate getDispatchRate(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace) {
-        validateAdminAccessOnProperty(property);
-        Policies policies = getNamespacePolicies(property, cluster, namespace);
-        DispatchRate dispatchRate = policies.clusterDispatchRate.get(pulsar().getConfiguration().getClusterName());
-        if (dispatchRate != null) {
-            return dispatchRate;
-        } else {
-            throw new RestException(Status.NOT_FOUND,
-                    "Dispatch-rate is not configured for cluster " + pulsar().getConfiguration().getClusterName());
         }
     }
 
@@ -1118,7 +842,7 @@ public class Namespaces extends AdminResource {
 
         try {
             Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
+            final String path = path("policies", property, cluster, namespace);
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             RetentionPolicies r = policies.retention_policies;
@@ -1135,7 +859,7 @@ public class Namespaces extends AdminResource {
             }
             policies.backlog_quota_map.put(backlogQuotaType, backlogQuota);
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             log.info("[{}] Successfully updated backlog quota map: namespace={}/{}/{}, map={}", clientAppId(), property,
                     cluster, namespace, jsonMapper().writeValueAsString(policies.backlog_quota_map));
 
@@ -1174,12 +898,12 @@ public class Namespaces extends AdminResource {
 
         try {
             Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
+            final String path = path("policies", property, cluster, namespace);
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.backlog_quota_map.remove(backlogQuotaType);
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             log.info("[{}] Successfully removed backlog namespace={}/{}/{}, quota={}", clientAppId(), property, cluster,
                     namespace, backlogQuotaType);
 
@@ -1230,7 +954,7 @@ public class Namespaces extends AdminResource {
 
         try {
             Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
+            final String path = path("policies", property, cluster, namespace);
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             if (!checkQuotas(policies, retention)) {
@@ -1242,7 +966,7 @@ public class Namespaces extends AdminResource {
             }
             policies.retention_policies = retention;
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             log.info("[{}] Successfully updated retention configuration: namespace={}/{}/{}, map={}", clientAppId(),
                     property, cluster, namespace, jsonMapper().writeValueAsString(policies.retention_policies));
 
@@ -1284,21 +1008,19 @@ public class Namespaces extends AdminResource {
     @ApiOperation(value = "Set the persistence configuration for all the destinations on a namespace.")
     @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
             @ApiResponse(code = 404, message = "Namespace does not exist"),
-            @ApiResponse(code = 409, message = "Concurrent modification"),
-            @ApiResponse(code = 400, message = "Invalid persistence policies") })
+            @ApiResponse(code = 409, message = "Concurrent modification") })
     public void setPersistence(@PathParam("property") String property, @PathParam("cluster") String cluster,
             @PathParam("namespace") String namespace, PersistencePolicies persistence) {
         validatePoliciesReadOnlyAccess();
-        validatePersistencePolicies(persistence);
 
         try {
             Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
+            final String path = path("policies", property, cluster, namespace);
             byte[] content = globalZk().getData(path, null, nodeStat);
             Policies policies = jsonMapper().readValue(content, Policies.class);
             policies.persistence = persistence;
             globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
+            policiesCache().invalidate(path("policies", property, cluster, namespace));
             log.info("[{}] Successfully updated persistence configuration: namespace={}/{}/{}, map={}", clientAppId(),
                     property, cluster, namespace, jsonMapper().writeValueAsString(policies.persistence));
 
@@ -1314,26 +1036,6 @@ public class Namespaces extends AdminResource {
             log.error("[{}] Failed to update persistence configuration for namespace {}/{}/{}", clientAppId(), property,
                     cluster, namespace, e);
             throw new RestException(e);
-        }
-    }
-
-    private void validatePersistencePolicies(PersistencePolicies persistence) {
-        try {
-            checkNotNull(persistence);
-            final ServiceConfiguration config = pulsar().getConfiguration();
-            checkArgument(persistence.getBookkeeperEnsemble() <= config.getManagedLedgerMaxEnsembleSize(),
-                    "Bookkeeper-Ensemble must be <= %s", config.getManagedLedgerMaxEnsembleSize());
-            checkArgument(persistence.getBookkeeperWriteQuorum() <= config.getManagedLedgerMaxWriteQuorum(),
-                    "Bookkeeper-WriteQuorum must be <= %s", config.getManagedLedgerMaxWriteQuorum());
-            checkArgument(persistence.getBookkeeperAckQuorum() <= config.getManagedLedgerMaxAckQuorum(),
-                    "Bookkeeper-AckQuorum must be <= %s", config.getManagedLedgerMaxAckQuorum());
-            checkArgument(
-                    (persistence.getBookkeeperEnsemble() >= persistence.getBookkeeperWriteQuorum())
-                            && (persistence.getBookkeeperWriteQuorum() >= persistence.getBookkeeperAckQuorum()),
-                    "Bookkeeper Ensemble (%s) >= WriteQuorum (%s) >= AckQuoru (%s)", persistence.getBookkeeperEnsemble(),
-                    persistence.getBookkeeperWriteQuorum(), persistence.getBookkeeperAckQuorum());
-        }catch(NullPointerException | IllegalArgumentException e) {
-            throw new RestException(Status.PRECONDITION_FAILED, e.getMessage());
         }
     }
 
@@ -1366,7 +1068,7 @@ public class Namespaces extends AdminResource {
             @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
         validateAdminAccessOnProperty(property);
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory().getBundles(nsName);
             Exception exception = null;
@@ -1417,12 +1119,9 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership  for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         validateNamespaceBundleOwnership(nsName, policies.bundles, bundleRange, authoritative, true);
 
         clearBacklog(nsName, bundleRange, null);
@@ -1441,7 +1140,7 @@ public class Namespaces extends AdminResource {
             @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
         validateAdminAccessOnProperty(property);
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory().getBundles(nsName);
             Exception exception = null;
@@ -1492,12 +1191,9 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership  for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         validateNamespaceBundleOwnership(nsName, policies.bundles, bundleRange, authoritative, true);
 
         clearBacklog(nsName, bundleRange, subscription);
@@ -1515,7 +1211,7 @@ public class Namespaces extends AdminResource {
             @QueryParam("authoritative") @DefaultValue("false") boolean authoritative) {
         validateAdminAccessOnProperty(property);
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         try {
             NamespaceBundles bundles = pulsar().getNamespaceService().getNamespaceBundleFactory().getBundles(nsName);
             Exception exception = null;
@@ -1565,12 +1261,9 @@ public class Namespaces extends AdminResource {
         if (!cluster.equals(Namespaces.GLOBAL_CLUSTER)) {
             validateClusterOwnership(cluster);
             validateClusterForProperty(property, cluster);
-        } else {
-            // check cluster ownership for a given global namespace: redirect if peer-cluster owns it
-            validateGlobalNamespaceOwnership(NamespaceName.get(property, cluster, namespace));
         }
 
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
+        NamespaceName nsName = new NamespaceName(property, cluster, namespace);
         validateNamespaceBundleOwnership(nsName, policies.bundles, bundleRange, authoritative, true);
 
         unsubscribe(nsName, bundleRange, subscription);
@@ -1578,52 +1271,9 @@ public class Namespaces extends AdminResource {
                 nsName.toString(), bundleRange);
     }
 
-    @POST
-    @Path("/{property}/{cluster}/{namespace}/subscriptionAuthMode")
-    @ApiOperation(value = " Set a subscription auth mode for all the destinations on a namespace.")
-    @ApiResponses(value = { @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Namespace does not exist"),
-            @ApiResponse(code = 409, message = "Concurrent modification") })
-    public void setSubscriptionAuthMode(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace, SubscriptionAuthMode subscriptionAuthMode) {
-        validateAdminAccessOnProperty(property);
-        validatePoliciesReadOnlyAccess();
-
-        if (subscriptionAuthMode == null) {
-            subscriptionAuthMode = SubscriptionAuthMode.None;
-        }
-
-        try {
-            Stat nodeStat = new Stat();
-            final String path = path(POLICIES, property, cluster, namespace);
-            byte[] content = globalZk().getData(path, null, nodeStat);
-            Policies policies = jsonMapper().readValue(content, Policies.class);
-            policies.subscription_auth_mode = subscriptionAuthMode;
-            globalZk().setData(path, jsonMapper().writeValueAsBytes(policies), nodeStat.getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
-            log.info("[{}] Successfully updated subscription auth mode: namespace={}/{}/{}, map={}", clientAppId(), property,
-                    cluster, namespace, jsonMapper().writeValueAsString(policies.backlog_quota_map));
-
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to update subscription auth mode for namespace {}/{}/{}: does not exist", clientAppId(),
-                    property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn("[{}] Failed to update subscription auth mode for namespace {}/{}/{}: concurrent modification",
-                    clientAppId(), property, cluster, namespace);
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (RestException pfe) {
-            throw pfe;
-        } catch (Exception e) {
-            log.error("[{}] Failed to update subscription auth mode for namespace {}/{}/{}", clientAppId(), property,
-                    cluster, namespace, e);
-            throw new RestException(e);
-        }
-    }
-
     private void clearBacklog(NamespaceName nsName, String bundleRange, String subscription) {
         try {
-            List<Topic> topicList = pulsar().getBrokerService()
+            List<PersistentTopic> topicList = pulsar().getBrokerService()
                     .getAllTopicsFromNamespaceBundle(nsName.toString(), nsName.toString() + "/" + bundleRange);
 
             List<CompletableFuture<Void>> futures = Lists.newArrayList();
@@ -1631,16 +1281,12 @@ public class Namespaces extends AdminResource {
                 if (subscription.startsWith(pulsar().getConfiguration().getReplicatorPrefix())) {
                     subscription = PersistentReplicator.getRemoteCluster(subscription);
                 }
-                for (Topic topic : topicList) {
-                    if(topic instanceof PersistentTopic) {
-                        futures.add(((PersistentTopic)topic).clearBacklog(subscription));
-                    }
+                for (PersistentTopic topic : topicList) {
+                    futures.add(topic.clearBacklog(subscription));
                 }
             } else {
-                for (Topic topic : topicList) {
-                    if(topic instanceof PersistentTopic) {
-                        futures.add(((PersistentTopic)topic).clearBacklog());
-                    }
+                for (PersistentTopic topic : topicList) {
+                    futures.add(topic.clearBacklog());
                 }
             }
 
@@ -1654,14 +1300,14 @@ public class Namespaces extends AdminResource {
 
     private void unsubscribe(NamespaceName nsName, String bundleRange, String subscription) {
         try {
-            List<Topic> topicList = pulsar().getBrokerService()
+            List<PersistentTopic> topicList = pulsar().getBrokerService()
                     .getAllTopicsFromNamespaceBundle(nsName.toString(), nsName.toString() + "/" + bundleRange);
             List<CompletableFuture<Void>> futures = Lists.newArrayList();
             if (subscription.startsWith(pulsar().getConfiguration().getReplicatorPrefix())) {
                 throw new RestException(Status.PRECONDITION_FAILED, "Cannot unsubscribe a replication cursor");
             } else {
-                for (Topic topic : topicList) {
-                    Subscription sub = topic.getSubscription(subscription);
+                for (PersistentTopic topic : topicList) {
+                    PersistentSubscription sub = topic.getPersistentSubscription(subscription);
                     if (sub != null) {
                         futures.add(sub.delete());
                     }
@@ -1678,82 +1324,6 @@ public class Namespaces extends AdminResource {
                 throw new RestException(Status.PRECONDITION_FAILED, "Subscription has active connected consumers");
             }
             throw new RestException(e.getCause());
-        }
-    }
-
-    /**
-     * It validates that peer-clusters can't coexist in replication-clusters
-     * 
-     * @param clusterName:
-     *            given cluster whose peer-clusters can't be present into replication-cluster list
-     * @param clusters:
-     *            replication-cluster list
-     */
-    private void validatePeerClusterConflict(String clusterName, Set<String> replicationClusters) {
-        try {
-            ClusterData clusterData = clustersCache().get(path("clusters", clusterName)).orElseThrow(
-                    () -> new RestException(Status.PRECONDITION_FAILED, "Invalid replication cluster " + clusterName));
-            Set<String> peerClusters = clusterData.getPeerClusterNames();
-            if (peerClusters != null && !peerClusters.isEmpty()) {
-                SetView<String> conflictPeerClusters = Sets.intersection(peerClusters, replicationClusters);
-                if (!conflictPeerClusters.isEmpty()) {
-                    log.warn("[{}] {}'s peer cluster can't be part of replication clusters {}", clientAppId(),
-                            clusterName, conflictPeerClusters);
-                    throw new RestException(Status.CONFLICT,
-                            String.format("%s's peer-clusters %s can't be part of replication-clusters %s", clusterName,
-                                    conflictPeerClusters, replicationClusters));
-                }
-            }
-        } catch (RestException re) {
-            throw re;
-        } catch (Exception e) {
-            log.warn("[{}] Failed to get cluster-data for {}", clientAppId(), clusterName, e);
-        }
-    }
-    
-    @POST
-    @Path("/{property}/{cluster}/{namespace}/encryptionRequired")
-    @ApiOperation(value = "Message encryption is required or not for all topics in a namespace")
-    @ApiResponses(value = {
-            @ApiResponse(code = 403, message = "Don't have admin permission"),
-            @ApiResponse(code = 404, message = "Property or cluster or namespace doesn't exist"),
-            @ApiResponse(code = 409, message = "Concurrent modification"),
-    })
-    public void modifyEncryptionRequired(@PathParam("property") String property, @PathParam("cluster") String cluster,
-            @PathParam("namespace") String namespace, boolean encryptionRequired) {
-        validateAdminAccessOnProperty(property);
-        validatePoliciesReadOnlyAccess();
-
-        NamespaceName nsName = NamespaceName.get(property, cluster, namespace);
-        Entry<Policies, Stat> policiesNode = null;
-
-        try {
-            // Force to read the data s.t. the watch to the cache content is setup.
-            policiesNode = policiesCache().getWithStat(path(POLICIES, property, cluster, namespace))
-                    .orElseThrow(() -> new RestException(Status.NOT_FOUND, "Namespace " + nsName + " does not exist"));
-            policiesNode.getKey().encryption_required = encryptionRequired;
-
-            // Write back the new policies into zookeeper
-            globalZk().setData(path(POLICIES, property, cluster, namespace),
-                    jsonMapper().writeValueAsBytes(policiesNode.getKey()), policiesNode.getValue().getVersion());
-            policiesCache().invalidate(path(POLICIES, property, cluster, namespace));
-
-            log.info("[{}] Successfully {} on namespace {}/{}/{}", clientAppId(),
-                    encryptionRequired ? "true" : "false", property, cluster, namespace);
-        } catch (KeeperException.NoNodeException e) {
-            log.warn("[{}] Failed to modify encryption required status for namespace {}/{}/{}: does not exist", clientAppId(),
-                    property, cluster, namespace);
-            throw new RestException(Status.NOT_FOUND, "Namespace does not exist");
-        } catch (KeeperException.BadVersionException e) {
-            log.warn(
-                    "[{}] Failed to modify encryption required status on namespace {}/{}/{} expected policy node version={} : concurrent modification",
-                    clientAppId(), property, cluster, namespace, policiesNode.getValue().getVersion());
-
-            throw new RestException(Status.CONFLICT, "Concurrent modification");
-        } catch (Exception e) {
-            log.error("[{}] Failed to modify encryption required status on namespace {}/{}/{}", clientAppId(), property,
-                    cluster, namespace, e);
-            throw new RestException(e);
         }
     }
 

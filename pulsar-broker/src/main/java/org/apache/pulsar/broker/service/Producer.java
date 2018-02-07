@@ -19,34 +19,28 @@
 package org.apache.pulsar.broker.service;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.pulsar.broker.service.persistent.PersistentTopic.DATE_FORMAT;
 import static org.apache.pulsar.checksum.utils.Crc32cChecksum.computeChecksum;
 import static org.apache.pulsar.common.api.Commands.hasChecksum;
 import static org.apache.pulsar.common.api.Commands.readChecksum;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.Objects;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
+import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerTerminatedException;
 import org.apache.bookkeeper.mledger.util.Rate;
-import org.apache.pulsar.broker.service.BrokerServiceException.TopicClosedException;
 import org.apache.pulsar.broker.service.BrokerServiceException.TopicTerminatedException;
-import org.apache.pulsar.broker.service.Topic.PublishContext;
-import org.apache.pulsar.broker.service.nonpersistent.NonPersistentTopic;
-import org.apache.pulsar.broker.service.persistent.PersistentTopic;
+import org.apache.pulsar.broker.service.Topic.PublishCallback;
 import org.apache.pulsar.common.api.Commands;
-import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.api.proto.PulsarApi.ServerError;
 import org.apache.pulsar.common.naming.DestinationName;
-import org.apache.pulsar.common.policies.data.NonPersistentPublisherStats;
 import org.apache.pulsar.common.policies.data.PublisherStats;
-import org.apache.pulsar.common.util.DateFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.MoreObjects;
+import com.google.common.base.Objects;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.util.Recycler;
@@ -62,8 +56,6 @@ public class Producer {
     private final long producerId;
     private final String appId;
     private Rate msgIn;
-    // it records msg-drop rate only for non-persistent topic
-    private final Rate msgDrop;
 
     private volatile long pendingPublishAcks = 0;
     private static final AtomicLongFieldUpdater<Producer> pendingPublishAcksUpdater = AtomicLongFieldUpdater
@@ -75,13 +67,8 @@ public class Producer {
     private final PublisherStats stats;
     private final boolean isRemote;
     private final String remoteCluster;
-    private final boolean isNonPersistentTopic;
-    private final boolean isEncrypted;
 
-    private final Map<String, String> metadata;
-
-    public Producer(Topic topic, ServerCnx cnx, long producerId, String producerName, String appId,
-        boolean isEncrypted, Map<String, String> metadata) {
+    public Producer(Topic topic, ServerCnx cnx, long producerId, String producerName, String appId) {
         this.topic = topic;
         this.cnx = cnx;
         this.producerId = producerId;
@@ -89,36 +76,29 @@ public class Producer {
         this.closeFuture = new CompletableFuture<>();
         this.appId = appId;
         this.msgIn = new Rate();
-        this.isNonPersistentTopic = topic instanceof NonPersistentTopic;
-        this.msgDrop = this.isNonPersistentTopic ? new Rate() : null;
 
-        this.metadata = metadata != null ? metadata : Collections.emptyMap();
-
-        this.stats = isNonPersistentTopic ? new NonPersistentPublisherStats() : new PublisherStats();
+        this.stats = new PublisherStats();
         stats.address = cnx.clientAddress().toString();
-        stats.connectedSince = DateFormatter.now();
+        stats.connectedSince = DATE_FORMAT.format(Instant.now());
         stats.clientVersion = cnx.getClientVersion();
         stats.producerName = producerName;
         stats.producerId = producerId;
-        stats.metadata = this.metadata;
 
         this.isRemote = producerName
                 .startsWith(cnx.getBrokerService().pulsar().getConfiguration().getReplicatorPrefix());
         this.remoteCluster = isRemote ? producerName.split("\\.")[2] : null;
-
-        this.isEncrypted = isEncrypted;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(producerName);
+        return Objects.hashCode(producerName);
     }
 
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Producer) {
             Producer other = (Producer) obj;
-            return Objects.equals(producerName, other.producerName) && Objects.equals(topic, other.topic);
+            return Objects.equal(producerName, other.producerName) && Objects.equal(topic, other.topic);
         }
 
         return false;
@@ -129,7 +109,7 @@ public class Producer {
             cnx.ctx().channel().eventLoop().execute(() -> {
                 cnx.ctx().writeAndFlush(Commands.newSendError(producerId, sequenceId, ServerError.PersistenceError,
                         "Producer is closed"));
-                cnx.completedSendOperation(isNonPersistentTopic);
+                cnx.completedSendOperation();
             });
 
             return;
@@ -139,32 +119,14 @@ public class Producer {
             cnx.ctx().channel().eventLoop().execute(() -> {
                 cnx.ctx().writeAndFlush(
                         Commands.newSendError(producerId, sequenceId, ServerError.ChecksumError, "Checksum failed on the broker"));
-                cnx.completedSendOperation(isNonPersistentTopic);
+                cnx.completedSendOperation();
             });
             return;
         }
 
-        if (topic.isEncryptionRequired()) {
-
-            headersAndPayload.markReaderIndex();
-            MessageMetadata msgMetadata = Commands.parseMessageMetadata(headersAndPayload);
-            headersAndPayload.resetReaderIndex();
-
-            // Check whether the message is encrypted or not
-            if (msgMetadata.getEncryptionKeysCount() < 1) {
-                log.warn("[{}] Messages must be encrypted", getTopic().getName());
-                cnx.ctx().channel().eventLoop().execute(() -> {
-                    cnx.ctx().writeAndFlush(Commands.newSendError(producerId, sequenceId, ServerError.MetadataError,
-                            "Messages must be encrypted"));
-                    cnx.completedSendOperation(isNonPersistentTopic);
-                });
-                return;
-            }
-        }
-
         startPublishOperation();
         topic.publishMessage(headersAndPayload,
-                MessagePublishContext.get(this, sequenceId, msgIn, headersAndPayload.readableBytes(), batchSize));
+                MessagePublishedCallback.get(this, sequenceId, msgIn, headersAndPayload.readableBytes(), batchSize));
     }
 
     private boolean verifyChecksum(ByteBuf headersAndPayload) {
@@ -212,25 +174,7 @@ public class Producer {
         }
     }
 
-    public void recordMessageDrop(int batchSize) {
-        if (this.isNonPersistentTopic) {
-            msgDrop.recordEvent(batchSize);
-        }
-    }
-
-    /**
-     * Return the sequence id of
-     * @return
-     */
-    public long getLastSequenceId() {
-        if (isNonPersistentTopic) {
-            return -1;
-        } else {
-            return ((PersistentTopic) topic).getLastPublishedSequenceId(producerName);
-        }
-    }
-
-    private static final class MessagePublishContext implements PublishContext, Runnable {
+    private static final class MessagePublishedCallback implements PublishCallback, Runnable {
         private Producer producer;
         private long sequenceId;
         private long ledgerId;
@@ -238,37 +182,6 @@ public class Producer {
         private Rate rateIn;
         private int msgSize;
         private long batchSize;
-
-        private String originalProducerName;
-        private long originalSequenceId;
-
-        public String getProducerName() {
-            return producer.getProducerName();
-        }
-
-        public long getSequenceId() {
-            return sequenceId;
-        }
-
-        @Override
-        public void setOriginalProducerName(String originalProducerName) {
-            this.originalProducerName = originalProducerName;
-        }
-
-        @Override
-        public void setOriginalSequenceId(long originalSequenceId) {
-            this.originalSequenceId = originalSequenceId;
-        }
-
-        @Override
-        public String getOriginalProducerName() {
-            return originalProducerName;
-        }
-
-        @Override
-        public long getOriginalSequenceId() {
-            return originalSequenceId;
-        }
 
         /**
          * Executed from managed ledger thread when the message is persisted
@@ -280,15 +193,10 @@ public class Producer {
                         ? ServerError.TopicTerminatedError : ServerError.PersistenceError;
 
                 producer.cnx.ctx().channel().eventLoop().execute(() -> {
-                    if (!(exception instanceof TopicClosedException)) {
-                        // For TopicClosed exception there's no need to send explicit error, since the client was
-                        // already notified
-                        producer.cnx.ctx().writeAndFlush(Commands.newSendError(producer.producerId, sequenceId,
-                                serverError, exception.getMessage()));
-                    }
-                    producer.cnx.completedSendOperation(producer.isNonPersistentTopic);
+                    producer.cnx.ctx().writeAndFlush(Commands.newSendError(producer.producerId, sequenceId, serverError,
+                            exception.getMessage()));
+                    producer.cnx.completedSendOperation();
                     producer.publishOperationCompleted();
-                    recycle();
                 });
             } else {
                 if (log.isDebugEnabled()) {
@@ -317,33 +225,31 @@ public class Producer {
             producer.cnx.ctx().writeAndFlush(
                     Commands.newSendReceipt(producer.producerId, sequenceId, ledgerId, entryId),
                     producer.cnx.ctx().voidPromise());
-            producer.cnx.completedSendOperation(producer.isNonPersistentTopic);
+            producer.cnx.completedSendOperation();
             producer.publishOperationCompleted();
             recycle();
         }
 
-        static MessagePublishContext get(Producer producer, long sequenceId, Rate rateIn, int msgSize,
+        static MessagePublishedCallback get(Producer producer, long sequenceId, Rate rateIn, int msgSize,
                 long batchSize) {
-            MessagePublishContext callback = RECYCLER.get();
+            MessagePublishedCallback callback = RECYCLER.get();
             callback.producer = producer;
             callback.sequenceId = sequenceId;
             callback.rateIn = rateIn;
             callback.msgSize = msgSize;
             callback.batchSize = batchSize;
-            callback.originalProducerName = null;
-            callback.originalSequenceId = -1;
             return callback;
         }
 
-        private final Handle<MessagePublishContext> recyclerHandle;
+        private final Handle recyclerHandle;
 
-        private MessagePublishContext(Handle<MessagePublishContext> recyclerHandle) {
+        private MessagePublishedCallback(Handle recyclerHandle) {
             this.recyclerHandle = recyclerHandle;
         }
 
-        private static final Recycler<MessagePublishContext> RECYCLER = new Recycler<MessagePublishContext>() {
-            protected MessagePublishContext newObject(Recycler.Handle<MessagePublishContext> handle) {
-                return new MessagePublishContext(handle);
+        private static final Recycler<MessagePublishedCallback> RECYCLER = new Recycler<MessagePublishedCallback>() {
+            protected MessagePublishedCallback newObject(Recycler.Handle handle) {
+                return new MessagePublishedCallback(handle);
             }
         };
 
@@ -355,7 +261,7 @@ public class Producer {
             ledgerId = -1;
             entryId = -1;
             batchSize = 0;
-            recyclerHandle.recycle(this);
+            RECYCLER.recycle(this, recyclerHandle);
         }
     }
 
@@ -371,13 +277,9 @@ public class Producer {
         return producerId;
     }
 
-    public Map<String, String> getMetadata() {
-        return metadata;
-    }
-
     @Override
     public String toString() {
-        return MoreObjects.toStringHelper(this).add("topic", topic).add("client", cnx.clientAddress())
+        return Objects.toStringHelper(this).add("topic", topic).add("client", cnx.clientAddress())
                 .add("producerName", producerName).add("producerId", producerId).toString();
     }
 
@@ -437,10 +339,6 @@ public class Producer {
         stats.msgRateIn = msgIn.getRate();
         stats.msgThroughputIn = msgIn.getValueRate();
         stats.averageMsgSize = msgIn.getAverageValue();
-        if (this.isNonPersistentTopic) {
-            msgDrop.calculateRate();
-            ((NonPersistentPublisherStats) stats).msgDropRate = msgDrop.getRate();
-        }
     }
 
     public boolean isRemote() {
@@ -453,10 +351,6 @@ public class Producer {
 
     public PublisherStats getStats() {
         return stats;
-    }
-
-    public boolean isNonPersistentTopic() {
-        return isNonPersistentTopic;
     }
 
     @VisibleForTesting
@@ -480,14 +374,5 @@ public class Producer {
         }
     }
 
-    public void checkEncryption() {
-        if (topic.isEncryptionRequired() && !isEncrypted) {
-            log.info("[{}] [{}] Unencrypted producer is not allowed to produce from destination [{}] anymore",
-                    producerId, producerName, topic.getName());
-            disconnect();
-        }
-    }
-
     private static final Logger log = LoggerFactory.getLogger(Producer.class);
-
 }

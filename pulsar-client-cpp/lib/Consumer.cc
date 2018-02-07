@@ -27,11 +27,17 @@ namespace pulsar {
 
 static const std::string EMPTY_STRING;
 
-Consumer::Consumer() : impl_() {}
+Consumer::Consumer()
+        : impl_() {
+}
 
-Consumer::Consumer(ConsumerImplBasePtr impl) : impl_(impl) {}
+Consumer::Consumer(ConsumerImplBasePtr impl)
+        : impl_(impl) {
+}
 
-const std::string& Consumer::getTopic() const { return impl_ != NULL ? impl_->getTopic() : EMPTY_STRING; }
+const std::string& Consumer::getTopic() const {
+    return impl_ != NULL ? impl_->getTopic() : EMPTY_STRING;
+}
 
 const std::string& Consumer::getSubscriptionName() const {
     return impl_ != NULL ? impl_->getSubscriptionName() : EMPTY_STRING;
@@ -73,7 +79,9 @@ Result Consumer::receive(Message& msg, int timeoutMs) {
     return impl_->receive(msg, timeoutMs);
 }
 
-Result Consumer::acknowledge(const Message& message) { return acknowledge(message.getMessageId()); }
+Result Consumer::acknowledge(const Message& message) {
+    return acknowledge(message.getMessageId());
+}
 
 Result Consumer::acknowledge(const MessageId& messageId) {
     if (!impl_) {
@@ -184,9 +192,8 @@ Result Consumer::getBrokerConsumerStats(BrokerConsumerStats& brokerConsumerStats
 
 void Consumer::getBrokerConsumerStatsAsync(BrokerConsumerStatsCallback callback) {
     if (!impl_) {
-        callback(ResultConsumerNotInitialized, BrokerConsumerStats());
-        return;
+        return callback(ResultConsumerNotInitialized, BrokerConsumerStats());
     }
-    impl_->getBrokerConsumerStatsAsync(callback);
+    return impl_->getBrokerConsumerStatsAsync(callback);
 }
-}  // namespace pulsar
+}

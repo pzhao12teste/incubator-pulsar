@@ -68,8 +68,6 @@ struct Arguments {
     int receiverQueueSize;
     int ioThreads;
     int listenerThreads;
-    std::string encKeyName;
-    std::string encKeyValueFile;
 };
 
 namespace pulsar {
@@ -88,37 +86,6 @@ class PulsarFriend {
 #else
 #include <atomic>
 #endif
-
-class EncKeyReader: public CryptoKeyReader {
-
-  private:
-    std::string privKeyContents;
-
-    void readFile(std::string fileName, std::string& fileContents) const {
-        std::ifstream ifs(fileName);
-        std::stringstream fileStream;
-        fileStream << ifs.rdbuf();
-        fileContents = fileStream.str();
-    }
-
-  public:
-
-    EncKeyReader(std::string keyFile) {
-        if (keyFile.empty()) {
-            return;
-        }
-        readFile(keyFile, privKeyContents);
-    }
-
-    Result getPublicKey(const std::string &keyName, std::map<std::string, std::string>& metadata, EncryptionKeyInfo& encKeyInfo) const {
-        return ResultInvalidConfiguration;
-    }
-
-    Result getPrivateKey(const std::string &keyName, std::map<std::string, std::string>& metadata, EncryptionKeyInfo& encKeyInfo) const {
-        encKeyInfo.setKey(privKeyContents);
-        return ResultOk;
-    }
-};
 
 // Counters
 std::atomic<uint32_t> messagesReceived;
@@ -182,10 +149,6 @@ void startPerfConsumer(const Arguments& args) {
     ConsumerConfiguration consumerConf;
     consumerConf.setMessageListener(messageListener);
     consumerConf.setReceiverQueueSize(args.receiverQueueSize);
-    boost::shared_ptr<EncKeyReader> keyReader = boost::make_shared<EncKeyReader>(args.encKeyValueFile);
-    if (!args.encKeyName.empty()) {
-        consumerConf.setCryptoKeyReader(keyReader);
-    }
 
     Latch latch(args.numTopics * args.numConsumers);
 
@@ -298,12 +261,7 @@ int main(int argc, char** argv) {
      "Number of IO threads to use")  //
 
     ("listener-threads,l", po::value<int>(&args.listenerThreads)->default_value(1),
-     "Number of listener threads") //
-
-    ("encryption-key-name,k", po::value<std::string>(&args.encKeyName)->default_value(""), "The private key name to decrypt payload") //
-
-    ("encryption-key-value-file,f", po::value<std::string>(&args.encKeyValueFile)->default_value(""),
-            "The file which contains the private key to decrypt payload"); //
+     "Number of listener threads");
 
     po::options_description hidden;
     hidden.add_options()("topic", po::value<std::string>(&args.topic), "Topic name");

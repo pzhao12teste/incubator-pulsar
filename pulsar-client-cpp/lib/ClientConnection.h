@@ -68,18 +68,15 @@ class LookupDataResult;
 
 struct OpSendMsg;
 
-typedef std::pair<std::string, int64_t> ResponseData;
-
 class ClientConnection : public boost::enable_shared_from_this<ClientConnection> {
-    enum State
-    {
+    enum State {
         Pending,
         TcpConnected,
         Ready,
         Disconnected
     };
 
-   public:
+ public:
     typedef boost::shared_ptr<boost::asio::ip::tcp::socket> SocketPtr;
     typedef boost::shared_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket&> > TlsSocketPtr;
     typedef boost::shared_ptr<ClientConnection> ConnectionPtr;
@@ -87,14 +84,12 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
     typedef std::vector<ConnectionListener>::iterator ListenerIterator;
 
     /*
-     *  logicalAddress -  url of the service, for ex. pulsar://localhost:6650
-     *  physicalAddress - the address to connect to, it could be different from the logical address if proxy
-     * comes into play connected -  set when tcp connection is established
+     *  endpoint  -  url of the service, for ex. pulsar://localhost:6650
+     *  connected -  set when tcp connection is established
      *
      */
-    ClientConnection(const std::string& logicalAddress, const std::string& physicalAddress,
-                     ExecutorServicePtr executor, const ClientConfiguration& clientConfiguration,
-                     const AuthenticationPtr& authentication);
+    ClientConnection(const std::string& endpoint, ExecutorServicePtr executor,
+                     const ClientConfiguration& clientConfiguration, const AuthenticationPtr& authentication);
     ~ClientConnection();
 
     /*
@@ -112,7 +107,7 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
     Future<Result, ClientConnectionWeakPtr> getCloseFuture();
 
     void newTopicLookup(const std::string& destinationName, bool authoritative, const uint64_t requestId,
-                        LookupDataResultPromisePtr promise);
+                   LookupDataResultPromisePtr promise);
 
     void newPartitionedMetadataLookup(const std::string& destinationName, const uint64_t requestId,
                                       LookupDataResultPromisePtr promise);
@@ -130,7 +125,7 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
      * Send a request with a specific Id over the connection. The future will be
      * triggered when the response for this request is received
      */
-    Future<Result, ResponseData> sendRequestWithId(SharedBuffer cmd, int requestId);
+    Future<Result, std::string> sendRequestWithId(SharedBuffer cmd, int requestId);
 
     const std::string& brokerAddress() const;
 
@@ -140,11 +135,10 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
 
     Commands::ChecksumType getChecksumType() const;
 
-    Future<Result, BrokerConsumerStatsImpl> newConsumerStats(uint64_t consumerId, uint64_t requestId);
-
-   private:
+    Future<Result, BrokerConsumerStatsImpl> newConsumerStats(uint64_t consumerId, uint64_t requestId) ;
+ private:
     struct PendingRequestData {
-        Promise<Result, ResponseData> promise;
+        Promise<Result, std::string> promise;
         DeadlineTimerPtr timer;
     };
 
@@ -180,24 +174,26 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
     void handleSend(const boost::system::error_code& err, const SharedBuffer& cmd);
     void handleSendPair(const boost::system::error_code& err);
     void sendPendingCommands();
-    void newLookup(const SharedBuffer& cmd, const uint64_t requestId, LookupDataResultPromisePtr promise);
+    void newLookup(const SharedBuffer& cmd, const uint64_t requestId,
+                   LookupDataResultPromisePtr promise);
+
 
     void handleRequestTimeout(const boost::system::error_code& ec, PendingRequestData pendingRequestData);
 
     void handleKeepAliveTimeout();
 
-    template <typename Handler>
+    template<typename Handler>
     inline AllocHandler<Handler> customAllocReadHandler(Handler h) {
         return AllocHandler<Handler>(readHandlerAllocator_, h);
     }
 
-    template <typename Handler>
+    template<typename Handler>
     inline AllocHandler<Handler> customAllocWriteHandler(Handler h) {
         return AllocHandler<Handler>(writeHandlerAllocator_, h);
     }
 
-    template <typename ConstBufferSequence, typename WriteHandler>
-    inline void asyncWrite(const ConstBufferSequence& buffers, WriteHandler handler) {
+    template<typename ConstBufferSequence, typename WriteHandler>
+    inline void asyncWrite(const ConstBufferSequence &buffers, WriteHandler handler) {
         if (tlsSocket_) {
             boost::asio::async_write(*tlsSocket_, buffers, handler);
         } else {
@@ -205,8 +201,8 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
         }
     }
 
-    template <typename MutableBufferSequence, typename ReadHandler>
-    inline void asyncReceive(const MutableBufferSequence& buffers, ReadHandler handler) {
+    template<typename MutableBufferSequence, typename ReadHandler>
+    inline void asyncReceive(const MutableBufferSequence &buffers, ReadHandler handler) {
         if (tlsSocket_) {
             tlsSocket_->async_read_some(buffers, handler);
         } else {
@@ -228,13 +224,10 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
      */
     SocketPtr socket_;
     TlsSocketPtr tlsSocket_;
-
-    const std::string logicalAddress_;
-
     /*
      *  stores address of the service, for ex. pulsar://localhost:6650
      */
-    const std::string physicalAddress_;
+    const std::string address_;
 
     // Represent both endpoint of the tcp connection. eg: [client:1234 -> server:6650]
     std::string cnxString_;
@@ -264,6 +257,7 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
     typedef std::map<uint64_t, Promise<Result, BrokerConsumerStatsImpl> > PendingConsumerStatsMap;
     PendingConsumerStatsMap pendingConsumerStatsMap_;
 
+
     boost::mutex mutex_;
     typedef boost::unique_lock<boost::mutex> Lock;
 
@@ -282,7 +276,7 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
     DeadlineTimerPtr keepAliveTimer_;
     DeadlineTimerPtr consumerStatsRequestTimer_;
 
-    void handleConsumerStatsTimeout(const boost::system::error_code& ec,
+    void handleConsumerStatsTimeout(const boost::system::error_code &ec,
                                     std::vector<uint64_t> consumerStatsRequests);
 
     void startConsumerStatsTimer(std::vector<uint64_t> consumerStatsRequests);
@@ -292,6 +286,7 @@ class ClientConnection : public boost::enable_shared_from_this<ClientConnection>
 
     bool isTlsAllowInsecureConnection_;
 };
-}  // namespace pulsar
 
-#endif  //_PULSAR_CLIENT_CONNECTION_HEADER_
+}
+
+#endif//_PULSAR_CLIENT_CONNECTION_HEADER_

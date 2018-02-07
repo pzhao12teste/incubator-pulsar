@@ -18,9 +18,9 @@
  */
 package org.apache.pulsar.client.impl;
 
-import java.util.Collections;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -28,14 +28,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.pulsar.client.api.Consumer;
-import org.apache.pulsar.client.api.ConsumerConfiguration;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.MessageListener;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.client.util.ConsumerName;
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.util.FutureUtil;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandAck.AckType;
 import org.apache.pulsar.common.api.proto.PulsarApi.CommandSubscribe.SubType;
@@ -61,11 +55,12 @@ public abstract class ConsumerBase extends HandlerBase implements Consumer {
 
     protected ConsumerBase(PulsarClientImpl client, String topic, String subscription, ConsumerConfiguration conf,
             int receiverQueueSize, ExecutorService listenerExecutor, CompletableFuture<Consumer> subscribeFuture) {
-        super(client, topic, new Backoff(100, TimeUnit.MILLISECONDS, 60, TimeUnit.SECONDS, 0 , TimeUnit.MILLISECONDS));
+        super(client, topic);
         this.maxReceiverQueueSize = receiverQueueSize;
         this.subscription = subscription;
         this.conf = conf;
-        this.consumerName = conf.getConsumerName() == null ? ConsumerName.generateRandomName() : conf.getConsumerName();
+        this.consumerName = conf.getConsumerName() == null
+                ? DigestUtils.sha1Hex(UUID.randomUUID().toString()).substring(0, 5) : conf.getConsumerName();
         this.subscribeFuture = subscribeFuture;
         this.listener = conf.getMessageListener();
         if (receiverQueueSize <= 1) {
@@ -227,7 +222,7 @@ public abstract class ConsumerBase extends HandlerBase implements Consumer {
 
     @Override
     public CompletableFuture<Void> acknowledgeAsync(MessageId messageId) {
-        return doAcknowledge(messageId, AckType.Individual, Collections.emptyMap());
+        return doAcknowledge(messageId, AckType.Individual);
     }
 
     @Override
@@ -237,11 +232,10 @@ public abstract class ConsumerBase extends HandlerBase implements Consumer {
                     "Cannot use cumulative acks on a non-exclusive subscription"));
         }
 
-        return doAcknowledge(messageId, AckType.Cumulative, Collections.emptyMap());
+        return doAcknowledge(messageId, AckType.Cumulative);
     }
 
-    abstract protected CompletableFuture<Void> doAcknowledge(MessageId messageId, AckType ackType,
-                                                             Map<String,Long> properties);
+    abstract protected CompletableFuture<Void> doAcknowledge(MessageId messageId, AckType ackType);
 
     @Override
     public void unsubscribe() throws PulsarClientException {
@@ -331,13 +325,4 @@ public abstract class ConsumerBase extends HandlerBase implements Consumer {
      * breaks, the messages are redelivered after reconnect.
      */
     protected abstract void redeliverUnacknowledgedMessages(Set<MessageIdImpl> messageIds);
-
-    @Override
-    public String toString() {
-        return "ConsumerBase{" +
-                "subscription='" + subscription + '\'' +
-                ", consumerName='" + consumerName + '\'' +
-                ", topic='" + topic + '\'' +
-                '}';
-    }
 }

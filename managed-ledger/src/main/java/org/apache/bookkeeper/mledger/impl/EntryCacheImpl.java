@@ -25,13 +25,14 @@ import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 import java.util.Collection;
 import java.util.List;
 
+import org.apache.bookkeeper.client.AsyncCallback.ReadCallback;
 import org.apache.bookkeeper.client.BKException;
 import org.apache.bookkeeper.client.LedgerEntry;
 import org.apache.bookkeeper.client.LedgerHandle;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntriesCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
-import static org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl.createManagedLedgerException;
+import org.apache.bookkeeper.mledger.ManagedLedgerException.TooManyRequestsException;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.mledger.util.RangeCache;
 import org.apache.bookkeeper.mledger.util.RangeCache.Weighter;
@@ -85,8 +86,7 @@ public class EntryCacheImpl implements EntryCache {
             11, // maxOrder
             64, // tinyCacheSize
             32, // smallCacheSize
-            8, // normalCacheSize,
-            true // Use cache for all threads
+            8 // normalCacheSize
     );
 
     @Override
@@ -183,7 +183,7 @@ public class EntryCacheImpl implements EntryCache {
             lh.asyncReadEntries(position.getEntryId(), position.getEntryId(), (rc, ledgerHandle, sequence, obj) -> {
                 if (rc != BKException.Code.OK) {
                     ml.invalidateLedgerHandle(ledgerHandle, rc);
-                    callback.readEntryFailed(createManagedLedgerException(rc), obj);
+                    callback.readEntryFailed(new ManagedLedgerException(BKException.create(rc)), obj);
                     return;
                 }
 
@@ -252,11 +252,11 @@ public class EntryCacheImpl implements EntryCache {
 
                 if (rc != BKException.Code.OK) {
                     if (rc == BKException.Code.TooManyRequestsException) {
-                        callback.readEntriesFailed(createManagedLedgerException(rc), ctx);
+                        callback.readEntriesFailed(new TooManyRequestsException("Too many request error from bookies"),
+                                ctx);
                     } else {
                         ml.invalidateLedgerHandle(lh1, rc);
-                        ManagedLedgerException mlException = createManagedLedgerException(rc);
-                        callback.readEntriesFailed(mlException, ctx);
+                        callback.readEntriesFailed(new ManagedLedgerException(BKException.getMessage(rc)), ctx);
                     }
                     return;
                 }

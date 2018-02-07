@@ -26,6 +26,7 @@ import org.apache.bookkeeper.client.MockBookKeeper;
 import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactoryConfig;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryImpl;
+import org.apache.bookkeeper.mledger.impl.MetaStoreImplZookeeper.ZNodeProtobufFormat;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.zookeeper.MockZooKeeper;
@@ -33,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 
 /**
  * A class runs several bookie servers for testing.
@@ -54,6 +56,8 @@ public abstract class MockedBookKeeperTestCase {
 
     protected OrderedSafeExecutor executor;
     protected ExecutorService cachedExecutor;
+    
+    protected ZNodeProtobufFormat protobufFormat = ZNodeProtobufFormat.Text;
 
     public MockedBookKeeperTestCase() {
         // By default start a 3 bookies cluster
@@ -62,6 +66,11 @@ public abstract class MockedBookKeeperTestCase {
 
     public MockedBookKeeperTestCase(int numBookies) {
         this.numBookies = numBookies;
+    }
+    
+    @DataProvider(name = "protobufFormat")
+    public static Object[][] protobufFormat() {
+        return new Object[][] { { ZNodeProtobufFormat.Text }, { ZNodeProtobufFormat.Binary } };
     }
 
     @BeforeMethod
@@ -78,6 +87,7 @@ public abstract class MockedBookKeeperTestCase {
         executor = new OrderedSafeExecutor(2, "test");
         cachedExecutor = Executors.newCachedThreadPool();
         ManagedLedgerFactoryConfig conf = new ManagedLedgerFactoryConfig();
+        conf.setUseProtobufBinaryFormatInZK(protobufFormat == ZNodeProtobufFormat.Binary);
         factory = new ManagedLedgerFactoryImpl(bkc, zkc, conf);
     }
 

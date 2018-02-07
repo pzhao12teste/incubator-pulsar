@@ -7,33 +7,12 @@ tags:
 next: ../ConceptsAndArchitecture
 ---
 
-<!--
-
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-
--->
-
 For the purposes of local development and testing, you can run Pulsar in {% popover standalone %} mode on your own machine.
 
 Standalone mode includes a Pulsar {% popover broker %} as well as the necessary {% popover ZooKeeper %} and {% popover BookKeeper %} components running inside of a single Java Virtual Machine (JVM) process.
 
 {% include admonition.html type="info" title='Pulsar in production?' content="
-If you're looking to run a full production Pulsar installation, see the [Deploying a Pulsar instance](../../deployment/InstanceSetup) guide." %}
+If you're looking to run a full production Pulsar installation, see the [Deploying a Pulsar instance](../../deployment/ClusterSetup) guide." %}
 
 {% include explanations/install-package.md %}
 
@@ -54,7 +33,7 @@ If Pulsar has been successfully started, you should see `INFO`-level log message
 ```
 
 {% include admonition.html type="success" title='Automatically created namespace' content='
-When you start a local standalone cluster, Pulsar will automatically create a `sample/standalone/ns1` [namespace](../ConceptsAndArchitecture#namespace) that you can use for development purposes. All Pulsar topics are managed within namespaces. For more info, see [Topics](../ConceptsAndArchitecture#topics).' %}
+When you start a local standalone cluster, Pulsar will automatically create a `sample/standalone/ns1` namespace that you can use for development purposes. All Pulsar topics are managed within namespaces. For more info, see [Topics](../ConceptsAndArchitecture#Topics).' %}
 
 ## Testing your cluster setup
 
@@ -77,12 +56,12 @@ content="You may have noticed that we did not explicitly create the `my-topic` t
 
 ## Using Pulsar clients locally
 
-Pulsar currently offers client libraries for [Java](../../clients/Java), [Python](../../clients/Python), and [C++](../../clients/Cpp). If you're running a local {% popover standalone %} cluster, you can use one of these root URLs for interacting with your cluster:
+Pulsar currently offers client libraries for [Java](../../applications/JavaClient), [Python](../../applications/PythonClient), and [C++](../../applications/CppClient). If you're running a local {% popover standalone %} cluster, you can use one of these root URLs for interacting with your cluster:
 
 * `http://localhost:8080`
 * `pulsar://localhost:6650`
 
-Here's an example producer for a Pulsar {% popover topic %} using the [Java](../../clients/Java) client:
+Here's an example producer for a Pulsar {% popover topic %} using the [Java](../../applications/JavaClient) client:
 
 ```java
 String localClusterUrl = "pulsar://localhost:6650";
@@ -93,7 +72,7 @@ PulsarClient client = PulsarClient.create(localClusterUrl);
 Producer producer = client.createProducer(topic);
 ```
 
-Here's an example [Python](../../clients/Python) producer:
+Here's an example [Python](../../applications/PythonClient) producer:
 
 ```python
 import pulsar
@@ -104,7 +83,7 @@ client = pulsar.Client('pulsar://localhost:6650')
 producer = client.create_producer(TOPIC)
 ```
 
-Finally, here's an example [C++](../../clients/Cpp) producer:
+Finally, here's an example [C++](../../applications/CppClient) producer:
 
 ```cpp
 Client client("pulsar://localhost:6650");

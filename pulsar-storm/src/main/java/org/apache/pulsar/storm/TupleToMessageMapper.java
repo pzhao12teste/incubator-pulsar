@@ -22,8 +22,8 @@ import java.io.Serializable;
 
 import org.apache.pulsar.client.api.Message;
 
-import org.apache.storm.topology.OutputFieldsDeclarer;
-import org.apache.storm.tuple.Tuple;
+import backtype.storm.topology.OutputFieldsDeclarer;
+import backtype.storm.tuple.Tuple;
 
 public interface TupleToMessageMapper extends Serializable {
 

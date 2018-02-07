@@ -20,36 +20,24 @@
 #define LIB_BATCHMESSAGEID_H_
 
 #include <pulsar/MessageId.h>
-#include <iosfwd>
-
 #pragma GCC visibility push(default)
-
 namespace pulsar {
-
 class PulsarWrapper;
-
 class BatchMessageId : public MessageId {
-   public:
+ public:
     BatchMessageId(int64_t ledgerId, int64_t entryId, int batchIndex = -1)
-        : MessageId(ledgerId, entryId), batchIndex_(batchIndex) {}
+            : MessageId(ledgerId, entryId),
+              batchIndex_(batchIndex) {
+    }
 
-    BatchMessageId(const MessageId& msgId);
-
-    BatchMessageId() : batchIndex_(-1) {}
-
-    virtual void serialize(std::string& result) const;
-
+    BatchMessageId()
+            : batchIndex_(-1) {
+    }
     // These functions compare the message order as stored in bookkeeper
-    bool operator<(const BatchMessageId& other) const;
-    bool operator<=(const BatchMessageId& other) const;
-    bool operator==(const BatchMessageId& other) const;
-
-   protected:
-    virtual int64_t getBatchIndex() const;
-
-    friend class Commands;
+    inline bool operator<(const BatchMessageId& mID) const;
+    inline bool operator<=(const BatchMessageId& mID) const;
+ protected:
     friend class ConsumerImpl;
-    friend class ReaderImpl;
     friend class Message;
     friend class MessageImpl;
     friend class PartitionedProducerImpl;
@@ -58,10 +46,17 @@ class BatchMessageId : public MessageId {
     friend class PulsarWrapper;
     friend class PulsarFriend;
     int64_t batchIndex_;
-
-    friend std::ostream& operator<<(std::ostream& s, const BatchMessageId& messageId);
 };
-}  // namespace pulsar
+
+bool BatchMessageId::operator<(const BatchMessageId& mID) const {
+    return (ledgerId_ < mID.ledgerId_) || (ledgerId_ == mID.ledgerId_ && entryId_ < mID.entryId_);
+}
+
+bool BatchMessageId::operator<=(const BatchMessageId& mID) const {
+    return (ledgerId_ < mID.ledgerId_) || (ledgerId_ == mID.ledgerId_ && entryId_ <= mID.entryId_);
+}
+
+}
 #pragma GCC visibility pop
 
 #endif /* LIB_BATCHMESSAGEID_H_ */

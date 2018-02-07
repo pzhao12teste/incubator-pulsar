@@ -97,9 +97,7 @@ public class IOUtilsTest {
         }
     }
 
-    // TODO: Disabled because it fails with maven surefire 2.20
-    // https://github.com/apache/incubator-pulsar/issues/766
-    @Test(enabled = false, description = "Should go into infinte loop since j is an invalid response.")
+    @Test(description = "Should go into infinte loop since j is an invalid response.")
     public void test5() {
         try {
             String data = "j";
@@ -123,9 +121,7 @@ public class IOUtilsTest {
         }
     }
 
-    // TODO: Disabled because it fails with maven surefire 2.20
-    // https://github.com/apache/incubator-pulsar/issues/766
-    @Test(enabled = false, description = "Should go into infinte loop since \r means next line.")
+    @Test(description = "Should go into infinte loop since \r means next line.")
     public void test6() {
         try {
             String data = "\n";

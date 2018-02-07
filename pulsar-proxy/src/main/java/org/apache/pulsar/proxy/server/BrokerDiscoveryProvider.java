@@ -34,7 +34,8 @@ import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.common.naming.DestinationName;
 import org.apache.pulsar.common.partition.PartitionedTopicMetadata;
 import org.apache.pulsar.common.policies.data.PropertyAdmin;
-import org.apache.pulsar.policies.data.loadbalancer.LoadManagerReport;
+import org.apache.pulsar.policies.data.loadbalancer.LoadReport;
+import org.apache.pulsar.policies.data.loadbalancer.ServiceLookupData;
 import org.apache.pulsar.proxy.server.util.ZookeeperCacheLoader;
 import org.apache.pulsar.zookeeper.GlobalZooKeeperCache;
 import org.apache.pulsar.zookeeper.ZooKeeperClientFactory;
@@ -45,7 +46,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Joiner;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
-import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
 
 /**
  * Maintains available active broker list and returns next active broker in round-robin for discovery service.
@@ -78,13 +78,13 @@ public class BrokerDiscoveryProvider implements Closeable {
     }
 
     /**
-     * Find next broker {@link LoadManagerReport} in round-robin fashion.
+     * Find next broke {@link LoadReport} in round-robin fashion.
      *
      * @return
      * @throws PulsarServerException
      */
-    LoadManagerReport nextBroker() throws PulsarServerException {
-        List<LoadManagerReport> availableBrokers = localZkCache.getAvailableBrokers();
+    ServiceLookupData nextBroker() throws PulsarServerException {
+        List<ServiceLookupData> availableBrokers = localZkCache.getAvailableBrokers();
 
         if (availableBrokers.isEmpty()) {
             throw new PulsarServerException("No active broker is available");
@@ -139,7 +139,7 @@ public class BrokerDiscoveryProvider implements Closeable {
             PropertyAdmin propertyAdmin;
             try {
                 propertyAdmin = service.getConfigurationCacheService().propertiesCache()
-                        .get(path(POLICIES, destination.getProperty()))
+                        .get(path("policies", destination.getProperty()))
                         .orElseThrow(() -> new IllegalAccessException("Property does not exist"));
             } catch (KeeperException.NoNodeException e) {
                 LOG.warn("Failed to get property admin data for non existing property {}", destination.getProperty());

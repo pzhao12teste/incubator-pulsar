@@ -22,7 +22,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.pulsar.common.util.Codec;
 import org.slf4j.Logger;
@@ -57,7 +56,7 @@ public class DestinationName implements ServiceUnitId {
     private final int partitionIndex;
 
     private static final LoadingCache<String, DestinationName> cache = CacheBuilder.newBuilder().maximumSize(100000)
-            .expireAfterAccess(30, TimeUnit.MINUTES).build(new CacheLoader<String, DestinationName>() {
+            .build(new CacheLoader<String, DestinationName>() {
                 @Override
                 public DestinationName load(String name) throws Exception {
                     return new DestinationName(name);
@@ -99,7 +98,7 @@ public class DestinationName implements ServiceUnitId {
             }
 
             List<String> parts = Splitter.on("://").limit(2).splitToList(destination);
-            this.domain = DestinationDomain.getEnum(parts.get(0));
+            this.domain = DestinationDomain.valueOf(parts.get(0));
 
             String rest = parts.get(1);
             // property/cluster/namespace/<localName>
@@ -124,7 +123,7 @@ public class DestinationName implements ServiceUnitId {
         } catch (NullPointerException e) {
             throw new IllegalArgumentException("Invalid destination name: " + destination, e);
         }
-        namespaceName = NamespaceName.get(property, cluster, namespacePortion);
+        namespaceName = new NamespaceName(property, cluster, namespacePortion);
     }
 
     /**
@@ -173,7 +172,7 @@ public class DestinationName implements ServiceUnitId {
     }
 
     public DestinationName getPartition(int index) {
-        if (index == -1 || this.toString().contains(PARTITIONED_TOPIC_SUFFIX)) {
+        if (this.toString().contains(PARTITIONED_TOPIC_SUFFIX)) {
             return this;
         }
         String partitionName = this.toString() + PARTITIONED_TOPIC_SUFFIX + index;
@@ -185,26 +184,6 @@ public class DestinationName implements ServiceUnitId {
      */
     public int getPartitionIndex() {
         return partitionIndex;
-    }
-
-    public boolean isPartitioned() {
-        return partitionIndex != -1;
-    }
-
-    /**
-     * For partitions in a topic, return the base partitioned topic name
-     * Eg:
-     * <ul>
-     *  <li><code>persistent://prop/cluster/ns/my-topic-partition-1</code> --> <code>persistent://prop/cluster/ns/my-topic</code>
-     *  <li><code>persistent://prop/cluster/ns/my-topic</code> --> <code>persistent://prop/cluster/ns/my-topic</code>
-     * </ul>
-     */
-    public String getPartitionedTopicName() {
-        if (isPartitioned()) {
-            return destination.substring(0, destination.lastIndexOf("-partition-"));
-        } else {
-            return destination;
-        }
     }
 
     /**

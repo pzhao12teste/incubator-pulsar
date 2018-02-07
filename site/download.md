@@ -1,71 +1,38 @@
 ---
 title: Apache Pulsar downloads
-layout: content
+layout: docs
+toc_disable: true
 ---
 
-<!--
+{% include admonition.html type="success" title='Notice' content="
+The current release was done prior to entering the Apache Incubator, so
+it's still relative to 'Yahoo Pulsar' rather than 'Apache Pulsar'" %}
 
-    Licensed to the Apache Software Foundation (ASF) under one
-    or more contributor license agreements.  See the NOTICE file
-    distributed with this work for additional information
-    regarding copyright ownership.  The ASF licenses this file
-    to you under the Apache License, Version 2.0 (the
-    "License"); you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
+Download Pulsar from the [releases page](https://github.com/apache/incubator-pulsar/releases) on GitHub or here:
 
-      http://www.apache.org/licenses/LICENSE-2.0
+{% for version in site.versions %}
+### Version {{ version }}{% if version == site.current_version %} (latest){% endif %}
 
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
+| Type   | Link                                                                                                                                           |
+|:-------|:-----------------------------------------------------------------------------------------------------------------------------------------------|
+| Source | [pulsar-{{ version }}-src.tar.gz](https://github.com/apache/incubator-pulsar/releases/download/v{{ version }}/pulsar-{{ version }}-src.tar.gz) |
+| Binary | [pulsar-{{ version }}-bin.tar.gz](https://github.com/apache/incubator-pulsar/releases/download/v{{ version }}/pulsar-{{ version }}-bin.tar.gz) |
+{% endfor %}
 
--->
+### Release notes
 
-{% capture mirror_url %}https://www.apache.org/dyn/mirrors/mirrors.cgi?action=download&filename=incubator/pulsar/pulsar-{{ site.current_version }}/apache-pulsar-{{ site.current_version }}{% endcapture %}
-
-{% capture dist_url %}https://www.apache.org/dist/incubator/pulsar/pulsar-{{ site.current_version }}/apache-pulsar-{{ site.current_version }}{% endcapture %}
-
-You can download Pulsar from the [releases page](https://github.com/apache/incubator-pulsar/releases) on GitHub or here:
-
-### Version {{ site.current_version }} releases
-
-Release | Link | Crypto files
-:-------|:-----|:------------
-Binary | [pulsar-{{ site.current_version }}-bin.tar.gz]({{ mirror_url }}-bin.tar.gz) | [asc]({{ dist_url }}-bin.tar.gz.asc), [md5]({{ dist_url }}-bin.tar.gz.md5), [sha512]({{ dist_url }}-bin.tar.gz.sha512)
-Source | [pulsar-{{ site.current_version }}-src.tar.gz]({{ mirror_url }}-src.tar.gz) | [asc]({{ dist_url }}-src.tar.gz.asc), [md5]({{ dist_url }}-src.tar.gz.md5), [sha512]({{ dist_url }}-src.tar.gz.sha512)
-
-{% include admonition.html type="info" content='You can download the [KEYS](http://www.apache.org/dev/release-signing#keys-policy) file for Pulsar <a href="https://www.apache.org/dist/incubator/pulsar/KEYS" download>here</a>.' %}
-
-### Release notes for the {{ site.current_version }} release
-
-[https://github.com/apache/incubator-pulsar/releases/tag/v{{site.current_version}}](https://github.com/apache/incubator-pulsar/releases/tag/v{{site.current_version}})
+{% for version in site.versions %}
+* [Pulsar version {{version}}{% if version == site.current_version %} (latest){% endif %}](https://github.com/apache/incubator-pulsar/releases/tag/v{{ version }})
+{% endfor %}
 
 ### Getting started
 
-Once you've downloaded a Pulsar release, instructions on getting up and running with a {% popover standalone %} cluster that you can run on your laptop can be found in the [Run Pulsar locally](/docs/latest/getting-started/LocalCluster) tutorial.
+Once you've downloaded a Pulsar release, instructions on getting up and running with a {% popover standalone %} cluster that you can run your laptop can be found in [Run Pulsar locally](../docs/{{ site.current_version }}/getting-started/LocalCluster).
 
-If you need to connect to an existing Pulsar {% popover cluster %} or {% popover instance %} using an officially supported client, see the client docs for these languages:
+If you need to connect to an existing Pulsar {% popover cluster %} or {% popover instance %} using an officially supported client, see client docs for these languages:
 
-Client guide | API docs
-:------------|:--------
-[The Pulsar Java client](../docs/latest/clients/Java) | [Java client Javadoc](../api/client)<br />[Java admin interface Javadoc](../api/admin)
-[The Pulsar Python client](../docs/latest/clients/Python) | [pdoc](../api/python)
-[The Pulsar C++ client](../docs/latest/clients/Cpp) | [Doxygen docs](../api/cpp)
-
-
-{% if site.archived_releases %}
-{% capture archive_root_url %}http://archive.apache.org/dist/incubator/pulsar{% endcapture %}
-{% capture archive_root_https_url %}https://archive.apache.org/dist/incubator/pulsar{% endcapture %}
-{% capture release_notes_root_url %}https://github.com/apache/incubator-pulsar/releases/tag{% endcapture %}
-
-### Older releases
-
-Release | Binary | Source | Release notes
-:-------|:---------|:-------------|:-------------
-{% for version in site.archived_releases
-%} {{ version }} | [pulsar-{{version}}-bin.tar.gz]({{ archive_root_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-bin.tar.gz) - [asc]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-bin.tar.gz.asc), [md5]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-bin.tar.gz.md5), [sha]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-bin.tar.gz.sha) | [pulsar-{{ version }}-src.tar.gz]({{ archive_root_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-src.tar.gz) - [asc]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-src.tar.gz.asc), [md5]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-src.tar.gz.md5), [sha]({{ archive_root_https_url }}/pulsar-{{ version }}/apache-pulsar-{{ version }}-src.tar.gz.sha) | [Release notes v{{ version }}]({{ release_notes_root_url }}/v{{ version }})
-{% endfor %}
-{% endif %}
+| Client guide                                                         | API docs                                                                               |
+|:---------------------------------------------------------------------|:---------------------------------------------------------------------------------------|
+| [The Pulsar Java client](../docs/latest/applications/JavaClient)     | [Java client Javadoc](../api/client)<br />[Java admin interface Javadoc](../api/admin) |
+| [The Pulsar Python client](../docs/latest/applications/PythonClient) | [pdoc](../api/python)                                                                  |
+| [The Pulsar C++ client](../docs/latest/applications/CppClient)       | [Doxygen docs](../api/cpp)                                                             |

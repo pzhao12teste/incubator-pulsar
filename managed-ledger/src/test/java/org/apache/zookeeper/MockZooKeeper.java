@@ -49,10 +49,11 @@ import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
+import sun.reflect.ReflectionFactory;
 
 @SuppressWarnings({ "deprecation", "restriction", "rawtypes" })
 public class MockZooKeeper extends ZooKeeper {
-    private TreeMap<String, Pair<byte[], Integer>> tree;
+    private TreeMap<String, Pair<String, Integer>> tree;
     private SetMultimap<String, Watcher> watchers;
     private volatile boolean stopped;
     private boolean alwaysFail = false;
@@ -77,8 +78,7 @@ public class MockZooKeeper extends ZooKeeper {
 
     public static MockZooKeeper newInstance(ExecutorService executor, int readOpDelayMs) {
         try {
-
-            sun.reflect.ReflectionFactory rf = sun.reflect.ReflectionFactory.getReflectionFactory();
+            ReflectionFactory rf = ReflectionFactory.getReflectionFactory();
             Constructor objDef = Object.class.getDeclaredConstructor(new Class[0]);
             Constructor intConstr = rf.newConstructorForSerialization(MockZooKeeper.class, objDef);
             MockZooKeeper zk = MockZooKeeper.class.cast(intConstr.newInstance());
@@ -149,7 +149,7 @@ public class MockZooKeeper extends ZooKeeper {
             }
 
             if (createMode == CreateMode.EPHEMERAL_SEQUENTIAL || createMode == CreateMode.PERSISTENT_SEQUENTIAL) {
-                byte[] parentData = tree.get(parent).first;
+                String parentData = tree.get(parent).first;
                 int parentVersion = tree.get(parent).second;
                 path = path + parentVersion;
 
@@ -157,29 +157,17 @@ public class MockZooKeeper extends ZooKeeper {
                 tree.put(parent, Pair.create(parentData, parentVersion + 1));
             }
 
-            tree.put(path, Pair.create(data, 0));
+            tree.put(path, Pair.create(new String(data), 0));
 
-            final Set<Watcher> toNotifyCreate = Sets.newHashSet();
-            toNotifyCreate.addAll(watchers.get(path));
-
-            final Set<Watcher> toNotifyParent = Sets.newHashSet();
             if (!parent.isEmpty()) {
+                final Set<Watcher> toNotifyParent = Sets.newHashSet();
                 toNotifyParent.addAll(watchers.get(parent));
-            }
-            watchers.removeAll(path);
-            final String finalPath = path;
-            executor.execute(() -> {
-                    toNotifyCreate.forEach(
-                            watcher -> watcher.process(
-                                    new WatchedEvent(EventType.NodeCreated,
-                                                     KeeperState.SyncConnected,
-                                                     finalPath)));
-                    toNotifyParent.forEach(
-                            watcher -> watcher.process(
-                                    new WatchedEvent(EventType.NodeChildrenChanged,
-                                                     KeeperState.SyncConnected,
-                                                     parent)));
+
+                executor.execute(() -> {
+                    toNotifyParent.forEach(watcher -> watcher.process(
+                            new WatchedEvent(EventType.NodeChildrenChanged, KeeperState.SyncConnected, parent)));
                 });
+            }
 
             return path;
         } finally {
@@ -196,17 +184,9 @@ public class MockZooKeeper extends ZooKeeper {
             return;
         }
 
-        final Set<Watcher> toNotifyCreate = Sets.newHashSet();
-        toNotifyCreate.addAll(watchers.get(path));
-
-        final Set<Watcher> toNotifyParent = Sets.newHashSet();
-        final String parent = path.substring(0, path.lastIndexOf("/"));
-        if (!parent.isEmpty()) {
-            toNotifyParent.addAll(watchers.get(parent));
-        }
-        watchers.removeAll(path);
-
         executor.execute(() -> {
+            String parent = path.substring(0, path.lastIndexOf("/"));
+
             mutex.lock();
             if (getProgrammedFailStatus()) {
                 mutex.unlock();
@@ -221,20 +201,13 @@ public class MockZooKeeper extends ZooKeeper {
                 mutex.unlock();
                 cb.processResult(KeeperException.Code.NONODE.intValue(), path, ctx, null);
             } else {
-                tree.put(path, Pair.create(data, 0));
+                tree.put(path, Pair.create(new String(data), 0));
                 mutex.unlock();
                 cb.processResult(0, path, ctx, null);
-
-                toNotifyCreate.forEach(
-                        watcher -> watcher.process(
-                                new WatchedEvent(EventType.NodeCreated,
-                                                 KeeperState.SyncConnected,
-                                                 path)));
-                toNotifyParent.forEach(
-                        watcher -> watcher.process(
-                                new WatchedEvent(EventType.NodeChildrenChanged,
-                                                 KeeperState.SyncConnected,
-                                                 parent)));
+                if (!parent.isEmpty()) {
+                    watchers.get(parent).forEach(watcher -> watcher.process(
+                            new WatchedEvent(EventType.NodeChildrenChanged, KeeperState.SyncConnected, parent)));
+                }
             }
         });
 
@@ -245,7 +218,7 @@ public class MockZooKeeper extends ZooKeeper {
         mutex.lock();
         try {
             checkProgrammedFail();
-            Pair<byte[], Integer> value = tree.get(path);
+            Pair<String, Integer> value = tree.get(path);
             if (value == null) {
                 throw new KeeperException.NoNodeException(path);
             } else {
@@ -255,7 +228,7 @@ public class MockZooKeeper extends ZooKeeper {
                 if (stat != null) {
                     stat.setVersion(value.second);
                 }
-                return value.first;
+                return value.first.getBytes();
             }
         } finally {
             mutex.unlock();
@@ -274,7 +247,7 @@ public class MockZooKeeper extends ZooKeeper {
                 return;
             }
 
-            Pair<byte[], Integer> value;
+            Pair<String, Integer> value;
             mutex.lock();
             try {
                 value = tree.get(path);
@@ -287,7 +260,7 @@ public class MockZooKeeper extends ZooKeeper {
             } else {
                 Stat stat = new Stat();
                 stat.setVersion(value.second);
-                cb.processResult(0, path, ctx, value.first, stat);
+                cb.processResult(0, path, ctx, value.first.getBytes(), stat);
             }
         });
     }
@@ -307,7 +280,7 @@ public class MockZooKeeper extends ZooKeeper {
                 return;
             }
 
-            Pair<byte[], Integer> value = tree.get(path);
+            Pair<String, Integer> value = tree.get(path);
             if (value == null) {
                 mutex.unlock();
                 cb.processResult(KeeperException.Code.NONODE.intValue(), path, ctx, null, null);
@@ -319,7 +292,7 @@ public class MockZooKeeper extends ZooKeeper {
                 Stat stat = new Stat();
                 stat.setVersion(value.second);
                 mutex.unlock();
-                cb.processResult(0, path, ctx, value.first, stat);
+                cb.processResult(0, path, ctx, value.first.getBytes(), stat);
             }
         });
     }
@@ -520,7 +493,6 @@ public class MockZooKeeper extends ZooKeeper {
         }
     }
 
-    @Override
     public void exists(String path, boolean watch, StatCallback cb, Object ctx) {
         executor.execute(() -> {
             mutex.lock();
@@ -532,34 +504,6 @@ public class MockZooKeeper extends ZooKeeper {
                 mutex.unlock();
                 cb.processResult(KeeperException.Code.ConnectionLoss, path, ctx, null);
                 return;
-            }
-
-            if (tree.containsKey(path)) {
-                mutex.unlock();
-                cb.processResult(0, path, ctx, new Stat());
-            } else {
-                mutex.unlock();
-                cb.processResult(KeeperException.Code.NoNode, path, ctx, null);
-            }
-        });
-    }
-
-    @Override
-    public void exists(String path, Watcher watcher, StatCallback cb, Object ctx) {
-        executor.execute(() -> {
-            mutex.lock();
-            if (getProgrammedFailStatus()) {
-                mutex.unlock();
-                cb.processResult(failReturnCode.intValue(), path, ctx, null);
-                return;
-            } else if (stopped) {
-                mutex.unlock();
-                cb.processResult(KeeperException.Code.ConnectionLoss, path, ctx, null);
-                return;
-            }
-
-            if (watcher != null) {
-                watchers.put(path, watcher);
             }
 
             if (tree.containsKey(path)) {
@@ -615,7 +559,7 @@ public class MockZooKeeper extends ZooKeeper {
 
             newVersion = currentVersion + 1;
             log.debug("[{}] Updating -- current version: {}", path, currentVersion);
-            tree.put(path, Pair.create(data, newVersion));
+            tree.put(path, Pair.create(new String(data), newVersion));
 
             toNotify.addAll(watchers.get(path));
             watchers.removeAll(path);
@@ -673,7 +617,7 @@ public class MockZooKeeper extends ZooKeeper {
 
             int newVersion = currentVersion + 1;
             log.debug("[{}] Updating -- current version: {}", path, currentVersion);
-            tree.put(path, Pair.create(data, newVersion));
+            tree.put(path, Pair.create(new String(data), newVersion));
             Stat stat = new Stat();
             stat.setVersion(newVersion);
 

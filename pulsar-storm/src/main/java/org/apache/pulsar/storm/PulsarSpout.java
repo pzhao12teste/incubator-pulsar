@@ -18,8 +18,6 @@
  */
 package org.apache.pulsar.storm;
 
-import static java.lang.String.format;
-
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentMap;
@@ -39,13 +37,13 @@ import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.impl.Backoff;
 
-import org.apache.storm.metric.api.IMetric;
-import org.apache.storm.spout.SpoutOutputCollector;
-import org.apache.storm.task.TopologyContext;
-import org.apache.storm.topology.OutputFieldsDeclarer;
-import org.apache.storm.topology.base.BaseRichSpout;
-import org.apache.storm.tuple.Values;
-import org.apache.storm.utils.Utils;
+import backtype.storm.metric.api.IMetric;
+import backtype.storm.spout.SpoutOutputCollector;
+import backtype.storm.task.TopologyContext;
+import backtype.storm.topology.OutputFieldsDeclarer;
+import backtype.storm.topology.base.BaseRichSpout;
+import backtype.storm.tuple.Values;
+import backtype.storm.utils.Utils;
 
 public class PulsarSpout extends BaseRichSpout implements IMetric {
 
@@ -158,16 +156,6 @@ public class PulsarSpout extends BaseRichSpout implements IMetric {
      */
     @Override
     public void nextTuple() {
-        emitNextAvailableTuple();
-    }
-    
-    /**
-     * It makes sure that it emits next available non-tuple to topology unless consumer queue doesn't have any message
-     * available. It receives message from consumer queue and converts it to tuple and emits to topology. if the
-     * converted tuple is null then it tries to receives next message and perform the same until it finds non-tuple to
-     * emit.
-     */
-    public void emitNextAvailableTuple() {
         Message msg;
 
         // check if there are any failed messages to re-emit in the topology
@@ -192,18 +180,12 @@ public class PulsarSpout extends BaseRichSpout implements IMetric {
                 LOG.debug("[{}] Receiving the next message from pulsar consumer to emit to the collector", spoutId);
             }
             try {
-                boolean done = false;
-                while (!done) {
-                    msg = consumer.receive(100, TimeUnit.MILLISECONDS);
-                    if (msg != null) {
-                        ++messagesReceived;
-                        messageSizeReceived += msg.getData().length;
-                        done = mapToValueAndEmit(msg);
-                    } else {
-                        // queue is empty and nothing to emit
-                        done = true;
-                    }
+                msg = consumer.receive(1, TimeUnit.SECONDS);
+                if (msg != null) {
+                    ++messagesReceived;
+                    messageSizeReceived += msg.getData().length;
                 }
+                mapToValueAndEmit(msg);
             } catch (PulsarClientException e) {
                 LOG.error("[{}] Error receiving message from pulsar consumer", spoutId, e);
             }
@@ -231,8 +213,6 @@ public class PulsarSpout extends BaseRichSpout implements IMetric {
                     pulsarSpoutConf.getTopic(), pulsarSpoutConf.getSubscriptionName());
         } catch (PulsarClientException e) {
             LOG.error("[{}] Error creating pulsar consumer on topic {}", spoutId, pulsarSpoutConf.getTopic(), e);
-            throw new IllegalStateException(format("Failed to initialize consumer for %s-%s : %s",
-                    pulsarSpoutConf.getTopic(), pulsarSpoutConf.getSubscriptionName(), e.getMessage()), e);
         }
         context.registerMetric(String.format("PulsarSpoutMetrics-%s-%s", componentId, context.getThisTaskIndex()), this,
                 pulsarSpoutConf.getMetricsTimeIntervalInSecs());
@@ -244,7 +224,7 @@ public class PulsarSpout extends BaseRichSpout implements IMetric {
 
     }
 
-    private boolean mapToValueAndEmit(Message msg) {
+    private void mapToValueAndEmit(Message msg) {
         if (msg != null) {
             Values values = pulsarSpoutConf.getMessageToValuesMapper().toValues(msg);
             ++pendingAcks;
@@ -260,10 +240,8 @@ public class PulsarSpout extends BaseRichSpout implements IMetric {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("[{}] Emitted message {} to the collector", spoutId, msg.getMessageId());
                 }
-                return true;
             }
         }
-        return false;
     }
 
     public class MessageRetries {

@@ -21,8 +21,6 @@ package org.apache.pulsar.common.stats;
 import java.util.Collections;
 import java.util.Map;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.base.Objects;
 import com.google.common.collect.Maps;
@@ -40,7 +38,7 @@ public class Metrics {
 
     final Map<String, Object> metrics;
 
-    @JsonInclude(content=Include.NON_EMPTY)
+    @JsonSerialize(include = JsonSerialize.Inclusion.NON_EMPTY)
     final Map<String, String> dimensions;
 
     // hide constructor

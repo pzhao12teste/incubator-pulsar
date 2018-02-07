@@ -23,8 +23,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.fail;
 
+import java.lang.reflect.Method;
 import java.net.URI;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -33,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.ConsumerConfiguration;
 import org.apache.pulsar.client.api.PulsarClient;
@@ -48,8 +49,6 @@ import org.testng.annotations.Test;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import static org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest.retryStrategically;
-import static org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest.retryStrategically;
 
 /**
  */
@@ -69,7 +68,7 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
 
     /**
      * Verifies: updating zk-thottling node reflects broker-maxConcurrentLookupRequest and updates semaphore.
-     *
+     * 
      * @throws Exception
      */
     @Test
@@ -84,7 +83,7 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
     /**
      * Broker has maxConcurrentLookupRequest = 0 so, it rejects incoming lookup request and it cause consumer creation
      * failure.
-     *
+     * 
      * @throws Exception
      */
     @Test
@@ -123,12 +122,12 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
 
     /**
      * Verifies: Broker side throttling:
-     *
+     * 
      * <pre>
-     * 1. concurrent_consumer_creation > maxConcurrentLookupRequest at broker
+     * 1. concurrent_consumer_creation > maxConcurrentLookupRequest at broker 
      * 2. few of the consumer creation must fail with TooManyLookupRequestException.
      * </pre>
-     *
+     * 
      * @throws Exception
      */
     @Test
@@ -156,7 +155,7 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
             }
         }
 
-        List<Consumer> successfulConsumers = Collections.synchronizedList(Lists.newArrayList());
+        List<Consumer> successfulConsumers = Lists.newArrayList();
         ExecutorService executor = Executors.newFixedThreadPool(10);
         final int totalConsumers = 20;
         CountDownLatch latch = new CountDownLatch(totalConsumers);
@@ -174,27 +173,24 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
         }
         latch.await();
 
-        for (Consumer c : successfulConsumers) {
-            if (c != null) {
-                c.close();
-            }
+        for (int i = 0; i < successfulConsumers.size(); i++) {
+            successfulConsumers.get(i).close();
         }
         pulsarClient.close();
-        executor.shutdown();
         assertNotEquals(successfulConsumers.size(), totalConsumers);
     }
 
     /**
      * This testcase make sure that once consumer lost connection with broker, it always reconnects with broker by
      * retrying on throttling-error exception also.
-     *
+     * 
      * <pre>
-     * 1. all consumers get connected
-     * 2. broker restarts with maxConcurrentLookupRequest = 1
+     * 1. all consumers get connected 
+     * 2. broker restarts with maxConcurrentLookupRequest = 1 
      * 3. consumers reconnect and some get TooManyRequestException and again retries
      * 4. eventually all consumers will successfully connect to broker
      * </pre>
-     *
+     * 
      * @throws Exception
      */
     @Test
@@ -211,7 +207,7 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
         upsertLookupPermits(100);
         ConsumerConfiguration consumerConfig = new ConsumerConfiguration();
         consumerConfig.setSubscriptionType(SubscriptionType.Shared);
-        List<Consumer> consumers = Collections.synchronizedList(Lists.newArrayList());
+        List<Consumer> consumers = Lists.newArrayList();
         ExecutorService executor = Executors.newFixedThreadPool(10);
         final int totalConsumers = 8;
         CountDownLatch latch = new CountDownLatch(totalConsumers);
@@ -234,7 +230,13 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
         startBroker();
 
         // wait strategically for all consumers to reconnect
-        retryStrategically((test) -> areAllConsumersConnected(consumers), 5, 500);
+        for (int i = 0; i < 5; i++) {
+            if (!areAllConsumersConnected(consumers)) {
+                Thread.sleep(1000 + (i * 500));
+            } else {
+                break;
+            }
+        }
 
         int totalConnectedConsumers = 0;
         for (int i = 0; i < consumers.size(); i++) {
@@ -246,7 +248,6 @@ public class BrokerServiceThrottlingTest extends BrokerTestBase {
         }
         assertEquals(totalConnectedConsumers, totalConsumers);
 
-        executor.shutdown();
         pulsarClient.close();
     }
 

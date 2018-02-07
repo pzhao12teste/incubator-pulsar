@@ -137,7 +137,7 @@ public class Brokers extends AdminResource {
     @Path("/configuration")
     @ApiOperation(value = "Get all updatable dynamic configurations's name")
     public List<String> getDynamicConfigurationName() {
-        return BrokerService.getDynamicConfiguration();
+        return BrokerService.getDynamicConfigurationMap().keys();
     }
     
     /**
@@ -151,10 +151,7 @@ public class Brokers extends AdminResource {
      */
     private synchronized void updateDynamicConfigurationOnZk(String configName, String configValue) {
         try {
-            if (!BrokerService.validateDynamicConfiguration(configName, configValue)) {
-                throw new RestException(Status.PRECONDITION_FAILED, " Invalid dynamic-config value");
-            }
-            if (BrokerService.isDynamicConfiguration(configName)) {
+            if (BrokerService.getDynamicConfigurationMap().containsKey(configName)) {
                 ZooKeeperDataCache<Map<String, String>> dynamicConfigurationCache = pulsar().getBrokerService()
                         .getDynamicConfigurationCache();
                 Map<String, String> configurationMap = dynamicConfigurationCache.get(BROKER_SERVICE_CONFIGURATION_PATH)

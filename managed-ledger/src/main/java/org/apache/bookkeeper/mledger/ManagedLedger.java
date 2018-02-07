@@ -321,16 +321,4 @@ public interface ManagedLedger {
      * Returns whether the managed ledger was terminated
      */
     public boolean isTerminated();
-
-    /**
-     * Returns managed-ledger config 
-     */
-    ManagedLedgerConfig getConfig();
-
-    /**
-     * Updates managed-ledger config
-     * 
-     * @param config
-     */
-    void setConfig(ManagedLedgerConfig config);
 }

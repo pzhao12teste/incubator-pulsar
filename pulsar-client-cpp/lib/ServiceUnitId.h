@@ -23,8 +23,9 @@
 #include <boost/shared_ptr.hpp>
 
 class ServiceUnitId {
-   public:
-    virtual ~ServiceUnitId() {}
+ public:
+    virtual ~ServiceUnitId() {
+    }
 };
 
 #endif
