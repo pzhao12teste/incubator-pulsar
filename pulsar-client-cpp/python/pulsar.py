@@ -158,7 +158,7 @@ class Authentication:
         * `authParamsString`: Comma-separated list of provider-specific
           configuration params
         """
-        self.auth = _pulsar.Authentication(dynamicLibPath, authParamsString)
+        self._auth = _pulsar.Authentication(dynamicLibPath, authParamsString)
 
 
 class Client:
